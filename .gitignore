@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project-specific
+runs/
+models/
+.cache/
+*.mp4
+*.avi
+*.mov
+data/samples/*
+!data/samples/.gitkeep
+!data/samples/README.md
+
+# macOS
+.DS_Store

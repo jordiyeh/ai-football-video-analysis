@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/yehj10/Local/ai_video_analysis status)"
+    ]
+  }
+}
