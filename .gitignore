@@ -27,6 +27,7 @@ models/
 *.mp4
 *.avi
 *.mov
+*.pt  # YOLO model weights
 data/samples/*
 !data/samples/.gitkeep
 !data/samples/README.md
