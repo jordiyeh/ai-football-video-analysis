@@ -60,6 +60,10 @@ class OverlayRenderer:
         annotated = frame.copy()
 
         for detection in detections:
+            # Skip detections with invalid bounding boxes
+            if any(np.isnan(v) or np.isinf(v) for v in detection.bbox):
+                continue
+
             x1, y1, x2, y2 = map(int, detection.bbox)
             confidence = detection.confidence
             obj_type = detection.object_type
@@ -145,12 +149,22 @@ class OverlayRenderer:
 
             # Draw trail
             trail_points = points[-self.config.trail_length :]
-            for i in range(len(trail_points) - 1):
-                pt1 = tuple(map(int, trail_points[i]))
-                pt2 = tuple(map(int, trail_points[i + 1]))
+
+            # Filter out points with NaN values
+            valid_points = []
+            for pt in trail_points:
+                if not any(np.isnan(v) or np.isinf(v) for v in pt):
+                    valid_points.append(pt)
+
+            if len(valid_points) < 2:
+                continue
+
+            for i in range(len(valid_points) - 1):
+                pt1 = tuple(map(int, valid_points[i]))
+                pt2 = tuple(map(int, valid_points[i + 1]))
 
                 # Fade trail (older points are more transparent)
-                alpha = (i + 1) / len(trail_points)
+                alpha = (i + 1) / len(valid_points)
                 thickness = max(1, int(3 * alpha))
 
                 cv2.line(annotated, pt1, pt2, (0, 255, 255), thickness)

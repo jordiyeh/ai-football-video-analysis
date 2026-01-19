@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import numpy as np
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 
@@ -24,6 +25,22 @@ class IngestStage(PipelineStage):
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """Extract video metadata and validate."""
         video_path = Path(context["video_path"])
+        output_dir = Path(context["output_dir"])
+        metadata_path = output_dir / "video_metadata.json"
+
+        # Check for cached metadata
+        if context.get("resume", False) and metadata_path.exists():
+            self.console.print(f"[bold yellow]✓ Using cached video metadata from {metadata_path.name}[/bold yellow]")
+
+            with open(metadata_path) as f:
+                video_metadata = json.load(f)
+
+            self.console.print(f"  {video_path.name} - {video_metadata['duration']:.2f}s @ {video_metadata['fps']:.2f}fps (skipped ingest stage)")
+            context["video_metadata"] = video_metadata
+            return context
+        else:
+            if context.get("resume", False):
+                self.console.print(f"[dim]No cache found at {metadata_path.name}, reading video...[/dim]")
 
         with VideoReader(video_path) as reader:
             metadata = reader.metadata
@@ -35,8 +52,7 @@ class IngestStage(PipelineStage):
             self.console.print(f"  Total frames: {metadata.total_frames}")
 
             # Save metadata
-            output_dir = Path(context["output_dir"])
-            metadata.save(output_dir / "video_metadata.json")
+            metadata.save(metadata_path)
 
             context["video_metadata"] = metadata.to_dict()
 
@@ -53,6 +69,32 @@ class DetectionStage(PipelineStage):
         """Run detection on all frames."""
         video_path = Path(context["video_path"])
         output_dir = Path(context["output_dir"])
+
+        # Check for cached detections
+        if context.get("resume", False):
+            if self.config.export.detections_format == "parquet":
+                cache_path = output_dir / "detections.parquet"
+            else:
+                cache_path = output_dir / "detections.jsonl"
+
+            if cache_path.exists():
+                self.console.print(f"[bold yellow]✓ Using cached detections from {cache_path.name}[/bold yellow]")
+                import pandas as pd
+
+                if cache_path.suffix == ".parquet":
+                    df = pd.read_parquet(cache_path)
+                    all_detections = df.to_dict(orient="records")
+                else:
+                    all_detections = []
+                    with open(cache_path) as f:
+                        for line in f:
+                            all_detections.append(json.loads(line))
+
+                self.console.print(f"  Loaded {len(all_detections)} detections (skipped detection stage)")
+                context["detections"] = all_detections
+                return context
+            else:
+                self.console.print(f"[dim]No cache found at {cache_path.name}, running detection...[/dim]")
 
         # Initialize detector
         detector = YOLODetector(
@@ -122,6 +164,33 @@ class TrackingStage(PipelineStage):
         from src.vision.track import ByteTracker
 
         output_dir = Path(context["output_dir"])
+
+        # Check for cached tracks
+        if context.get("resume", False):
+            if self.config.export.detections_format == "parquet":
+                cache_path = output_dir / "tracks.parquet"
+            else:
+                cache_path = output_dir / "tracks.jsonl"
+
+            if cache_path.exists():
+                self.console.print(f"[bold yellow]✓ Using cached tracks from {cache_path.name}[/bold yellow]")
+                import pandas as pd
+
+                if cache_path.suffix == ".parquet":
+                    df = pd.read_parquet(cache_path)
+                    all_tracks = df.to_dict(orient="records")
+                else:
+                    all_tracks = []
+                    with open(cache_path) as f:
+                        for line in f:
+                            all_tracks.append(json.loads(line))
+
+                self.console.print(f"  Loaded {len(all_tracks)} track points (skipped tracking stage)")
+                context["tracks"] = all_tracks
+                return context
+            else:
+                self.console.print(f"[dim]No cache found at {cache_path.name}, running tracking...[/dim]")
+
         detections = context.get("detections", [])
         video_metadata = context["video_metadata"]
         fps = video_metadata["fps"]
@@ -211,6 +280,40 @@ class TeamAssignmentStage(PipelineStage):
         from src.vision.team import TeamAssigner, extract_jersey_color, collect_track_colors
 
         output_dir = Path(context["output_dir"])
+
+        # Check for cached team assignments
+        if context.get("resume", False):
+            teams_path = output_dir / "teams.json"
+            if self.config.export.detections_format == "parquet":
+                tracks_path = output_dir / "tracks.parquet"
+            else:
+                tracks_path = output_dir / "tracks.jsonl"
+
+            if teams_path.exists() and tracks_path.exists():
+                self.console.print(f"[bold yellow]✓ Using cached team assignments from {teams_path.name}[/bold yellow]")
+
+                # Load teams info
+                with open(teams_path) as f:
+                    team_info = json.load(f)
+
+                # Reload tracks (they should have team assignments already)
+                import pandas as pd
+                if tracks_path.suffix == ".parquet":
+                    df = pd.read_parquet(tracks_path)
+                    tracks = df.to_dict(orient="records")
+                else:
+                    tracks = []
+                    with open(tracks_path) as f:
+                        for line in f:
+                            tracks.append(json.loads(line))
+
+                context["tracks"] = tracks
+                context["team_info"] = team_info
+                self.console.print(f"  Loaded {team_info['n_teams']} teams (skipped team assignment stage)")
+                return context
+            else:
+                self.console.print(f"[dim]No cache found, running team assignment...[/dim]")
+
         video_path = Path(context["video_path"])
         tracks = context.get("tracks", [])
 
@@ -290,8 +393,7 @@ class TeamAssignmentStage(PipelineStage):
 
             teams_path = output_dir / "teams.json"
             with open(teams_path, "w") as f:
-                json.dumps(team_info, f, indent=2)
-                f.write(json.dumps(team_info, indent=2))
+                json.dump(team_info, f, indent=2)
 
             self.console.print(f"Saved team assignments to: {teams_path}")
 
@@ -330,6 +432,32 @@ class EventDetectionStage(PipelineStage):
         from src.events import BallTrajectory, EventDetector
 
         output_dir = Path(context["output_dir"])
+
+        # Check for cached events
+        if context.get("resume", False):
+            events_path = output_dir / "events.jsonl"
+            timeline_path = output_dir / "score_timeline.json"
+
+            if events_path.exists() and timeline_path.exists():
+                self.console.print(f"[bold yellow]✓ Using cached events from {events_path.name}[/bold yellow]")
+
+                # Load events
+                events = []
+                with open(events_path) as f:
+                    for line in f:
+                        events.append(json.loads(line))
+
+                # Load timeline
+                with open(timeline_path) as f:
+                    timeline_data = json.load(f)
+
+                self.console.print(f"  Loaded {len(events)} events (skipped event detection stage)")
+                context["events"] = events
+                context["score_timeline"] = timeline_data.get("timeline", [])
+                return context
+            else:
+                self.console.print(f"[dim]No cache found, running event detection...[/dim]")
+
         tracks = context.get("tracks", [])
         video_metadata = context["video_metadata"]
 
@@ -527,12 +655,15 @@ class OverlayStage(PipelineStage):
 
                             # Update track history
                             bbox = data_dict["bbox"]
-                            center_x = (bbox[0] + bbox[2]) / 2
-                            center_y = (bbox[1] + bbox[3]) / 2
 
-                            if track_id not in track_history:
-                                track_history[track_id] = []
-                            track_history[track_id].append((center_x, center_y))
+                            # Skip tracks with NaN bounding boxes
+                            if not any(np.isnan(v) or np.isinf(v) for v in bbox):
+                                center_x = (bbox[0] + bbox[2]) / 2
+                                center_y = (bbox[1] + bbox[3]) / 2
+
+                                if track_id not in track_history:
+                                    track_history[track_id] = []
+                                track_history[track_id].append((center_x, center_y))
 
                     # Draw track trails first (below boxes)
                     if use_tracks:
@@ -578,7 +709,13 @@ class OverlayStage(PipelineStage):
     default=None,
     help="Path to configuration YAML file",
 )
-def main(video: str, output: str, config: str | None):
+@click.option(
+    "--resume",
+    is_flag=True,
+    default=False,
+    help="Resume from existing outputs (skip completed stages)",
+)
+def main(video: str, output: str, config: str | None, resume: bool):
     """Analyze a soccer match video."""
     console = Console()
     console.print("[bold green]Veo-style Soccer Match Analysis[/bold green]\n")
@@ -604,7 +741,7 @@ def main(video: str, output: str, config: str | None):
 
     # Run pipeline
     try:
-        result = pipeline.run(video_path=video, output_dir=output)
+        result = pipeline.run(video_path=video, output_dir=output, resume=resume)
 
         # Print summary
         console.print("\n[bold green]Analysis Complete![/bold green]\n")

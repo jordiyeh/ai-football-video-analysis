@@ -134,6 +134,7 @@ class Pipeline:
         self,
         video_path: str | Path,
         output_dir: str | Path,
+        resume: bool = False,
     ) -> dict[str, Any]:
         """
         Run the full pipeline.
@@ -141,6 +142,7 @@ class Pipeline:
         Args:
             video_path: Path to input video
             output_dir: Directory for outputs
+            resume: Resume from existing outputs (skip completed stages)
 
         Returns:
             Pipeline results
@@ -151,11 +153,15 @@ class Pipeline:
 
         self.console.print(f"\n[bold green]Starting pipeline for: {video_path.name}[/bold green]\n")
 
+        if resume:
+            self.console.print("[yellow]Resume mode enabled - using cached outputs where available[/yellow]\n")
+
         # Initialize context
         context = {
             "video_path": str(video_path),
             "output_dir": str(output_dir),
             "start_time": datetime.now().isoformat(),
+            "resume": resume,
         }
 
         # Run stages sequentially

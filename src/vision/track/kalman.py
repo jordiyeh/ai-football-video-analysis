@@ -123,6 +123,10 @@ def measurement_to_bbox(measurement: np.ndarray) -> tuple[float, float, float, f
     """
     x_center, y_center, area, aspect_ratio = measurement
 
+    # Ensure valid values (avoid sqrt of negative numbers)
+    area = max(0.0, area)
+    aspect_ratio = max(0.1, aspect_ratio)  # Avoid division by zero
+
     # Calculate width and height from area and aspect ratio
     height = np.sqrt(area / aspect_ratio)
     width = aspect_ratio * height
