@@ -2,25 +2,26 @@
 
 A local-first soccer video analysis system optimized for Apple Silicon that detects players, tracks the ball, identifies teams, and recognizes key events like shots and goals.
 
-**Status**: ✅ Milestones 1 & 2 complete - Detection and tracking tested on a full 96-minute match (M1 MacBook Air)
+**Status**: ✅ Milestones 1, 2, & 3 complete - Detection, tracking, and team identification (M1 MacBook Air)
 
 ## Features
 
-### ✅ Currently Available (v0.2 - Milestones 1 & 2)
+### ✅ Currently Available (v0.3 - Milestones 1, 2 & 3)
 
 - **Player & Ball Detection** - YOLOv8-based detection with confidence scores
 - **Multi-Object Tracking** - ByteTrack for stable player/ball tracking across frames
+- **Team Identification** - Automatic team assignment via jersey color clustering
 - **Video Analysis** - Process full 90-minute matches with configurable frame sampling
-- **Annotated Overlays** - Videos with bounding boxes, track IDs, and movement trails
-- **Data Export** - Detections and tracks in Parquet, CSV, and JSONL formats
+- **Annotated Overlays** - Videos with team-colored boxes, track IDs, and movement trails
+- **Data Export** - Detections, tracks, and team assignments in Parquet, CSV, and JSON formats
 - **Apple Silicon Optimized** - MPS (Metal Performance Shaders) GPU acceleration
 - **CLI Interface** - Rich progress bars and status output
-- **Analysis Tools** - Built-in tools to explore detections and track quality
+- **Analysis Tools** - Built-in tools to explore detections, tracks, and team assignments
 
 ### 🚧 In Progress
 
-- Team identification via jersey color clustering
 - Shot and goal detection
+- Event timeline generation
 
 ### 📋 Planned
 
@@ -101,8 +102,9 @@ runs/my_analysis/
 ├── run_manifest.json       # Configuration snapshot and runtime info
 ├── video_metadata.json     # Video properties (fps, resolution, duration)
 ├── detections.parquet      # All detections with bbox, confidence, timestamps
-├── tracks.parquet          # Stable tracks with IDs across frames
-└── overlay.mp4            # Annotated video with bounding boxes, IDs, and trails
+├── tracks.parquet          # Stable tracks with IDs and team assignments
+├── teams.json              # Team colors and assignments
+└── overlay.mp4            # Annotated video with team-colored boxes, IDs, and trails
 ```
 
 ### Working with Detection Data
@@ -206,6 +208,45 @@ Expected output:
 - Stable track IDs maintained across frames
 - Track trails showing player movement
 - Quality metrics showing fragmentation and coverage
+
+### Working with Team Data
+
+The `teams.json` file contains team assignments and colors:
+
+```python
+import json
+import pandas as pd
+
+# Load team info
+with open("runs/my_analysis/teams.json") as f:
+    teams = json.load(f)
+
+# Load tracks with team assignments
+df = pd.read_parquet("runs/my_analysis/tracks.parquet")
+
+# Analyze by team
+team_a = df[df.team_name == 'team_A']
+team_b = df[df.team_name == 'team_B']
+
+print(f"Team A players: {team_a.track_id.nunique()}")
+print(f"Team B players: {team_b.track_id.nunique()}")
+
+# Export by team
+team_a.to_csv("team_A_tracks.csv", index=False)
+team_b.to_csv("team_B_tracks.csv", index=False)
+```
+
+Or use the built-in team analysis tool:
+
+```bash
+python explore_teams.py runs/my_analysis
+```
+
+This generates:
+- `tracks_team_A.csv` - Team A player tracks
+- `tracks_team_B.csv` - Team B player tracks
+- `team_summary.csv` - Per-team statistics
+- Team balance analysis and consistency checks
 
 ## Configuration
 
@@ -426,12 +467,13 @@ ai_video_analysis/
 - ✅ Handle occlusions and tentative/confirmed tracks
 - ✅ Track analysis and export tools
 
-### Milestone 3: "It Knows Teams"
-- [ ] Jersey color extraction and clustering
-- [ ] Team assignment (ours vs opponent)
-- [ ] Team-colored overlays and labels
-- [ ] Manual team correction interface
-- [ ] Confidence scores for team assignments
+### ✅ Milestone 3: "It Knows Teams" (v0.3 - Completed)
+- ✅ Jersey color extraction from player bounding boxes
+- ✅ K-means clustering for team separation (HSV color space)
+- ✅ Automatic team assignment to tracks
+- ✅ Team-colored overlays and labels in video
+- ✅ Team analysis tools and export by team
+- ✅ Team consistency validation
 
 ### Milestone 4: "It Detects Events"
 - [ ] Shot detection (ball velocity + trajectory)
