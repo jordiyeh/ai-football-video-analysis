@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veo Soccer Analysis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0f1419;
+            color: #e8eaed;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: #1a1d23;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #2d3139;
+        }
+        
+        .header h1 {
+            color: #00ff88;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .runs-list {
+            background: #1a1d23;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .runs-list h2 {
+            color: #00ff88;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+        
+        .run-item {
+            background: #252931;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .run-item:hover {
+            background: #2d3139;
+            border-left-color: #00ff88;
+        }
+        
+        .run-item.active {
+            background: #2d3139;
+            border-left-color: #00ff88;
+        }
+        
+        .run-name {
+            font-weight: 600;
+            color: #e8eaed;
+            margin-bottom: 0.5rem;
+        }
+        
+        .run-meta {
+            font-size: 0.875rem;
+            color: #9aa0a6;
+        }
+        
+        .event-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+        
+        .event-badge.shot {
+            background: #ff6b35;
+            color: #fff;
+        }
+        
+        .event-badge.goal {
+            background: #00ff88;
+            color: #0f1419;
+        }
+        
+        .viewer {
+            display: none;
+        }
+        
+        .viewer.active {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+        
+        .video-section {
+            background: #1a1d23;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        video {
+            width: 100%;
+            border-radius: 6px;
+            background: #000;
+        }
+        
+        .timeline {
+            background: #252931;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+            position: relative;
+            height: 80px;
+        }
+        
+        .timeline-bar {
+            width: 100%;
+            height: 6px;
+            background: #3d4149;
+            border-radius: 3px;
+            position: relative;
+            margin: 1rem 0;
+        }
+        
+        .timeline-progress {
+            height: 100%;
+            background: #00ff88;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.1s;
+        }
+        
+        .timeline-marker {
+            position: absolute;
+            top: -4px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .timeline-marker.shot {
+            background: #ff6b35;
+        }
+        
+        .timeline-marker.goal {
+            background: #00ff88;
+        }
+        
+        .timeline-marker:hover {
+            transform: scale(1.3);
+        }
+        
+        .events-panel {
+            background: #1a1d23;
+            border-radius: 8px;
+            padding: 1.5rem;
+            max-height: 800px;
+            overflow-y: auto;
+        }
+        
+        .events-panel h3 {
+            color: #00ff88;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+        
+        .event-item {
+            background: #252931;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 6px;
+            border-left: 3px solid;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .event-item.shot {
+            border-left-color: #ff6b35;
+        }
+        
+        .event-item.goal {
+            border-left-color: #00ff88;
+        }
+        
+        .event-item:hover {
+            background: #2d3139;
+            transform: translateX(4px);
+        }
+        
+        .event-time {
+            font-weight: 600;
+            color: #e8eaed;
+            margin-bottom: 0.25rem;
+        }
+        
+        .event-details {
+            font-size: 0.875rem;
+            color: #9aa0a6;
+        }
+        
+        .confidence {
+            display: inline-block;
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            background: #3d4149;
+            color: #e8eaed;
+            margin-left: 0.5rem;
+        }
+        
+        .confidence.high {
+            background: #00ff88;
+            color: #0f1419;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #9aa0a6;
+        }
+        
+        .score {
+            background: #252931;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .score-display {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00ff88;
+        }
+        
+        @media (max-width: 1024px) {
+            .viewer.active {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚽ Veo Soccer Analysis</h1>
+    </div>
+    
+    <div class="container">
+        <div class="runs-list" id="runsList">
+            <h2>Analysis Runs</h2>
+            <div class="loading">Loading runs...</div>
+        </div>
+        
+        <div class="viewer" id="viewer">
+            <div class="video-section">
+                <video id="videoPlayer" controls>
+                    <source id="videoSource" src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                
+                <div class="timeline">
+                    <div class="timeline-bar" id="timelineBar">
+                        <div class="timeline-progress" id="timelineProgress"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="events-panel">
+                <div class="score" id="scoreDisplay">
+                    <div class="score-display">0 - 0</div>
+                </div>
+                
+                <h3>Events</h3>
+                <div id="eventsList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>

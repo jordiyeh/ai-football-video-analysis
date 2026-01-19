@@ -2,16 +2,17 @@
 
 A local-first soccer video analysis system optimized for Apple Silicon that detects players, tracks the ball, identifies teams, and recognizes key events like shots and goals.
 
-**Status**: ✅ Milestones 1, 2, 3, & 4 complete - Detection, tracking, teams, and event detection (M1 MacBook Air)
+**Status**: ✅ Milestones 1-5 complete - Full pipeline with local web UI (M1 MacBook Air)
 
 ## Features
 
-### ✅ Currently Available (v0.4 - Milestones 1, 2, 3 & 4)
+### ✅ Currently Available (v0.5 - Milestones 1-5)
 
 - **Player & Ball Detection** - YOLOv8-based detection with confidence scores
 - **Multi-Object Tracking** - ByteTrack for stable player/ball tracking across frames
 - **Team Identification** - Automatic team assignment via jersey color clustering
 - **Event Detection** - Shot and goal detection with confidence scores and score timeline
+- **Local Web UI** - Interactive timeline, video player, and event review interface
 - **Video Analysis** - Process full 90-minute matches with configurable frame sampling
 - **Annotated Overlays** - Videos with team-colored boxes, track IDs, and movement trails
 - **Data Export** - Detections, tracks, team assignments, and events in Parquet, CSV, JSONL, and JSON
@@ -21,7 +22,7 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 
 ### 📋 Planned
 
-- Local web UI for event review and confirmation
+- Event confirmation and editing in UI
 - Field keypoint detection for normalization
 - Jersey number OCR and player identification
 
@@ -297,6 +298,41 @@ This generates:
 - `event_timeline.csv` - Timeline for visualization
 - Event statistics and confidence analysis
 
+## Using the Web UI
+
+After running analysis, launch the local web interface to review events:
+
+```bash
+# Start the UI server
+python run_ui.py
+
+# Or specify a custom runs directory
+python run_ui.py path/to/runs
+```
+
+The UI will open at http://localhost:8000 with:
+
+**Features:**
+- Browse all analysis runs
+- Interactive video player with overlay
+- Click events to jump to that moment
+- Visual timeline with shot/goal markers
+- Score display and event confidence
+- Frame-accurate seeking
+
+**Usage:**
+1. Click a run from the list to load it
+2. Video plays with team-colored boxes and track IDs
+3. Click events in the right panel to seek to that moment
+4. Click markers on the timeline to jump to events
+5. Review confidence scores and event details
+
+The UI automatically loads:
+- Video overlay (`overlay.mp4`)
+- Detected events (`events.jsonl`)
+- Score timeline (`score_timeline.json`)
+- Run metadata
+
 ## Configuration
 
 Edit `configs/default.yaml` to customize:
@@ -531,16 +567,20 @@ ai_video_analysis/
 - ✅ Score timeline with confidence scores
 - ✅ Events JSONL export with metadata
 - ✅ Event analysis and export tools
-- [ ] UI for event confirmation (deferred to Milestone 5)
 
-### Milestone 5: "It Has a UI"
-- [ ] FastAPI backend server
-- [ ] Local web interface
-- [ ] Interactive timeline with event markers
-- [ ] Video player with frame-accurate seeking
-- [ ] Export and sharing functionality
+### ✅ Milestone 5: "It Has a UI" (v0.5 - Completed)
+- ✅ FastAPI backend server with REST API
+- ✅ Local web interface (HTML/CSS/JS)
+- ✅ Interactive timeline with event markers (shots, goals)
+- ✅ Video player with frame-accurate seeking
+- ✅ Event list with click-to-seek
+- ✅ Score display and confidence indicators
+- [ ] Event confirmation and editing (deferred to v0.6)
+- [ ] Export and sharing functionality (deferred to v0.6)
 
 ### Milestone 6: "It's Production Ready"
+- [ ] Event confirmation and manual editing in UI
+- [ ] Export functionality from UI
 - [ ] Caching and resumable pipeline
 - [ ] Error recovery and validation
 - [ ] Performance profiling and optimization
