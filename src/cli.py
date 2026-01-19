@@ -111,6 +111,95 @@ class DetectionStage(PipelineStage):
         return context
 
 
+class TrackingStage(PipelineStage):
+    """Stage C: Multi-object tracking."""
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__("tracking", config)
+
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Run tracking on detections."""
+        from src.vision.track import ByteTracker
+
+        output_dir = Path(context["output_dir"])
+        detections = context.get("detections", [])
+        video_metadata = context["video_metadata"]
+        fps = video_metadata["fps"]
+
+        # Initialize tracker
+        tracker = ByteTracker(
+            track_thresh=0.5,  # Use confidence threshold from detections
+            track_buffer=self.config.tracking.max_age,
+            match_thresh=self.config.tracking.iou_threshold,
+            min_hits=self.config.tracking.min_hits,
+        )
+
+        # Group detections by frame
+        detections_by_frame = {}
+        for det in detections:
+            frame_idx = det["frame_idx"]
+            if frame_idx not in detections_by_frame:
+                detections_by_frame[frame_idx] = []
+            detections_by_frame[frame_idx].append(det)
+
+        # Run tracking frame by frame
+        all_tracks = []
+        frame_indices = sorted(detections_by_frame.keys())
+
+        self.console.print(f"Tracking objects across {len(frame_indices)} frames...")
+
+        for frame_idx in frame_indices:
+            frame_dets = detections_by_frame[frame_idx]
+
+            # Convert to tracker format
+            tracker_dets = [
+                {
+                    "bbox": tuple(d["bbox"]),
+                    "confidence": d["confidence"],
+                    "object_type": d["object_type"],
+                }
+                for d in frame_dets
+            ]
+
+            # Update tracker
+            tracks = tracker.update(tracker_dets)
+
+            # Store track results
+            timestamp = frame_idx / fps
+            for track in tracks:
+                track_dict = {
+                    "track_id": track.track_id,
+                    "frame_idx": frame_idx,
+                    "timestamp": timestamp,
+                    "object_type": track.object_type,
+                    "bbox": list(track.bbox),
+                    "confidence": track.confidence,
+                    "age": track.age,
+                    "hits": track.hits,
+                    "time_since_update": track.time_since_update,
+                }
+                all_tracks.append(track_dict)
+
+        self.console.print(f"Total tracks: {len(set(t['track_id'] for t in all_tracks))}")
+        self.console.print(f"Total track points: {len(all_tracks)}")
+
+        # Save tracks
+        if self.config.export.save_tracks:
+            if self.config.export.detections_format == "parquet":
+                output_path = output_dir / "tracks.parquet"
+                save_detections_to_parquet(all_tracks, output_path)
+            elif self.config.export.detections_format == "jsonl":
+                output_path = output_dir / "tracks.jsonl"
+                with open(output_path, "w") as f:
+                    for track in all_tracks:
+                        f.write(json.dumps(track) + "\n")
+
+            self.console.print(f"Saved tracks to: {output_path}")
+
+        context["tracks"] = all_tracks
+        return context
+
+
 class OverlayStage(PipelineStage):
     """Stage F: Render overlay video."""
 
@@ -125,18 +214,34 @@ class OverlayStage(PipelineStage):
 
         video_path = Path(context["video_path"])
         output_dir = Path(context["output_dir"])
-        detections = context.get("detections", [])
 
-        # Group detections by frame
-        detections_by_frame = {}
-        for det in detections:
-            frame_idx = det["frame_idx"]
-            if frame_idx not in detections_by_frame:
-                detections_by_frame[frame_idx] = []
-            detections_by_frame[frame_idx].append(det)
+        # Use tracks if available, otherwise fall back to detections
+        tracks = context.get("tracks", [])
+        use_tracks = len(tracks) > 0
+
+        if use_tracks:
+            self.console.print("Rendering with tracks and trails...")
+            data_by_frame = {}
+            for track in tracks:
+                frame_idx = track["frame_idx"]
+                if frame_idx not in data_by_frame:
+                    data_by_frame[frame_idx] = []
+                data_by_frame[frame_idx].append(track)
+        else:
+            self.console.print("Rendering with detections only...")
+            detections = context.get("detections", [])
+            data_by_frame = {}
+            for det in detections:
+                frame_idx = det["frame_idx"]
+                if frame_idx not in data_by_frame:
+                    data_by_frame[frame_idx] = []
+                data_by_frame[frame_idx].append(det)
 
         # Initialize renderer
         renderer = OverlayRenderer(self.config.overlay)
+
+        # Track history for trails (track_id -> list of center points)
+        track_history = {}
 
         # Initialize video writer
         metadata = context["video_metadata"]
@@ -164,25 +269,49 @@ class OverlayStage(PipelineStage):
                     sampling_strategy=self.config.video.sampling_strategy,
                     sampling_interval=self.config.video.sampling_interval,
                 ):
-                    # Get detections for this frame
-                    frame_dets = detections_by_frame.get(frame_idx, [])
+                    frame_data = data_by_frame.get(frame_idx, [])
 
-                    # Convert dict detections back to Detection objects
+                    # Convert to Detection objects with track IDs
                     from src.vision.detect.yolo import Detection
 
                     detection_objects = []
-                    for det_dict in frame_dets:
-                        detection_objects.append(
-                            Detection(
-                                object_type=det_dict["object_type"],
-                                bbox=tuple(det_dict["bbox"]),
-                                confidence=det_dict["confidence"],
-                                class_id=det_dict["class_id"],
-                            )
-                        )
+                    track_id_map = {}
 
-                    # Render overlay
-                    annotated = renderer.draw_detections(frame, detection_objects)
+                    for data_dict in frame_data:
+                        det = Detection(
+                            object_type=data_dict["object_type"],
+                            bbox=tuple(data_dict["bbox"]),
+                            confidence=data_dict["confidence"],
+                            class_id=data_dict.get("class_id", 0),
+                        )
+                        detection_objects.append(det)
+
+                        # Track ID mapping and history
+                        if use_tracks and "track_id" in data_dict:
+                            track_id = data_dict["track_id"]
+                            track_id_map[det] = track_id
+
+                            # Update track history
+                            bbox = data_dict["bbox"]
+                            center_x = (bbox[0] + bbox[2]) / 2
+                            center_y = (bbox[1] + bbox[3]) / 2
+
+                            if track_id not in track_history:
+                                track_history[track_id] = []
+                            track_history[track_id].append((center_x, center_y))
+
+                    # Draw track trails first (below boxes)
+                    if use_tracks:
+                        annotated = renderer.draw_tracks(frame, track_history)
+                    else:
+                        annotated = frame.copy()
+
+                    # Draw detections/tracks on top
+                    annotated = renderer.draw_detections(
+                        annotated,
+                        detection_objects,
+                        track_ids=track_id_map if use_tracks else None
+                    )
 
                     # Write frame
                     writer.write_frame(annotated)
@@ -233,6 +362,7 @@ def main(video: str, output: str, config: str | None):
     # Add stages
     pipeline.add_stage(IngestStage(pipeline_config))
     pipeline.add_stage(DetectionStage(pipeline_config))
+    pipeline.add_stage(TrackingStage(pipeline_config))
     pipeline.add_stage(OverlayStage(pipeline_config))
 
     # Run pipeline

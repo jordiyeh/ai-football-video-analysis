@@ -2,25 +2,25 @@
 
 A local-first soccer video analysis system optimized for Apple Silicon that detects players, tracks the ball, identifies teams, and recognizes key events like shots and goals.
 
-**Status**: ✅ Milestone 1 complete and tested on a full 96-minute match (M1 MacBook Air)
+**Status**: ✅ Milestones 1 & 2 complete - Detection and tracking tested on a full 96-minute match (M1 MacBook Air)
 
 ## Features
 
-### ✅ Currently Available (v0.1 - Milestone 1)
+### ✅ Currently Available (v0.2 - Milestones 1 & 2)
 
 - **Player & Ball Detection** - YOLOv8-based detection with confidence scores
+- **Multi-Object Tracking** - ByteTrack for stable player/ball tracking across frames
 - **Video Analysis** - Process full 90-minute matches with configurable frame sampling
-- **Annotated Overlays** - Generate videos with bounding boxes and labels
-- **Data Export** - Detections in Parquet, CSV, and JSONL formats
+- **Annotated Overlays** - Videos with bounding boxes, track IDs, and movement trails
+- **Data Export** - Detections and tracks in Parquet, CSV, and JSONL formats
 - **Apple Silicon Optimized** - MPS (Metal Performance Shaders) GPU acceleration
 - **CLI Interface** - Rich progress bars and status output
-- **Detection Analysis** - Built-in tools to explore and query detection data
+- **Analysis Tools** - Built-in tools to explore detections and track quality
 
 ### 🚧 In Progress
 
-- Multi-object tracking (ByteTrack)
 - Team identification via jersey color clustering
-- Track trails visualization
+- Shot and goal detection
 
 ### 📋 Planned
 
@@ -101,7 +101,8 @@ runs/my_analysis/
 ├── run_manifest.json       # Configuration snapshot and runtime info
 ├── video_metadata.json     # Video properties (fps, resolution, duration)
 ├── detections.parquet      # All detections with bbox, confidence, timestamps
-└── overlay.mp4            # Annotated video with bounding boxes
+├── tracks.parquet          # Stable tracks with IDs across frames
+└── overlay.mp4            # Annotated video with bounding boxes, IDs, and trails
 ```
 
 ### Working with Detection Data
@@ -137,6 +138,74 @@ This generates:
 - `ball_detections.csv` - Ball-only tracking data
 - `frame_summary.csv` - Per-frame statistics
 - Analysis of detection quality and patterns
+
+### Working with Track Data
+
+The `tracks.parquet` file contains stable tracks with persistent IDs:
+
+```python
+import pandas as pd
+
+# Load tracks
+df = pd.read_parquet("runs/my_analysis/tracks.parquet")
+
+# Columns: track_id, frame_idx, timestamp, object_type, bbox,
+#          confidence, age, hits, time_since_update
+
+# Example queries
+unique_players = df[df.object_type == 'player']['track_id'].nunique()
+ball_trajectory = df[df.object_type == 'ball']
+long_tracks = df.groupby('track_id').size()[lambda x: x > 100]
+
+# Export to CSV
+df.to_csv("tracks.csv", index=False)
+```
+
+Or use the built-in track analysis tool:
+
+```bash
+python explore_tracks.py runs/my_analysis
+```
+
+This generates:
+- `tracks.csv` - Full track export
+- `track_summary.csv` - Per-track statistics (length, quality, etc.)
+- `ball_tracks.csv` - Ball trajectory data
+- `player_trajectories.csv` - Player positions over time for heatmaps
+- Track quality analysis (fragmentation, coverage)
+
+### Testing Multi-Object Tracking
+
+Run a full analysis with tracking enabled:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run analysis with fast config (recommended for first test)
+python -m src.cli \
+  --video "path/to/match.mp4" \
+  --output runs/tracking_test \
+  --config configs/fast_test.yaml
+```
+
+The pipeline will:
+1. **Ingest** - Extract video metadata
+2. **Detect** - Find all players and ball in sampled frames
+3. **Track** - Associate detections into stable tracks with IDs
+4. **Overlay** - Render video with bounding boxes, track IDs, and trails
+
+Then analyze the tracking results:
+
+```bash
+python explore_tracks.py runs/tracking_test
+```
+
+Expected output:
+- Unique tracks for each player visible in the video
+- Stable track IDs maintained across frames
+- Track trails showing player movement
+- Quality metrics showing fragmentation and coverage
 
 ## Configuration
 
@@ -349,12 +418,13 @@ ai_video_analysis/
 - ✅ Detection analysis tools
 - ✅ Tested on full 96-minute match
 
-### Milestone 2: "It Tracks" (In Progress)
-- [ ] ByteTrack multi-object tracking
-- [ ] Stable track IDs across frames
-- [ ] Track quality metrics
-- [ ] Track trails in overlay visualization
-- [ ] Handle occlusions and track fragmentation
+### ✅ Milestone 2: "It Tracks" (v0.2 - Completed)
+- ✅ ByteTrack multi-object tracking implementation
+- ✅ Stable track IDs across frames with Kalman filtering
+- ✅ Track quality metrics (age, hits, fragmentation)
+- ✅ Track trails in overlay visualization
+- ✅ Handle occlusions and tentative/confirmed tracks
+- ✅ Track analysis and export tools
 
 ### Milestone 3: "It Knows Teams"
 - [ ] Jersey color extraction and clustering

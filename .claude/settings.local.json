@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C /Users/yehj10/Local/ai_video_analysis status)"
+      "Bash(git -C /Users/yehj10/Local/ai_video_analysis status)",
+      "Bash(od:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote add:*)",
+      "Bash(git config:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip search:*)",
+      "WebSearch",
+      "Bash(python -c:*)",
+      "Bash(pip show:*)",
+      "Bash(ls:*)"
     ]
   }
 }
