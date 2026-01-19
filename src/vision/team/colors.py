@@ -24,6 +24,10 @@ def extract_jersey_color(
     Returns:
         Mean BGR color as numpy array [B, G, R]
     """
+    # Check for NaN or invalid values
+    if any(np.isnan(v) or np.isinf(v) for v in bbox):
+        return np.array([0, 0, 0], dtype=np.float32)
+
     x1, y1, x2, y2 = map(int, bbox)
     height = y2 - y1
     width = x2 - x1
@@ -86,6 +90,10 @@ def extract_dominant_color_kmeans(
     Returns:
         Most dominant BGR color as numpy array [B, G, R]
     """
+    # Check for NaN or invalid values
+    if any(np.isnan(v) or np.isinf(v) for v in bbox):
+        return np.array([0, 0, 0], dtype=np.float32)
+
     x1, y1, x2, y2 = map(int, bbox)
     height = y2 - y1
     width = x2 - x1

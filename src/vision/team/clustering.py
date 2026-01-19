@@ -202,7 +202,14 @@ def collect_track_colors(
             track_id = track["track_id"]
             bbox = track["bbox"]
 
+            # Skip tracks with invalid bounding boxes (NaN or inf)
+            if any(np.isnan(v) or np.isinf(v) for v in bbox):
+                continue
+
             color = extract_fn(frame, bbox)
-            track_colors[track_id].append(color)
+
+            # Only add valid colors (not black/zero which indicates failure)
+            if not np.allclose(color, [0, 0, 0]):
+                track_colors[track_id].append(color)
 
     return dict(track_colors)
