@@ -2,31 +2,25 @@
 
 A local-first soccer video analysis system optimized for Apple Silicon that detects players, tracks the ball, identifies teams, and recognizes key events like shots and goals.
 
-**Status**: ✅ Milestones 1, 2, & 3 complete - Detection, tracking, and team identification (M1 MacBook Air)
+**Status**: ✅ Milestones 1, 2, 3, & 4 complete - Detection, tracking, teams, and event detection (M1 MacBook Air)
 
 ## Features
 
-### ✅ Currently Available (v0.3 - Milestones 1, 2 & 3)
+### ✅ Currently Available (v0.4 - Milestones 1, 2, 3 & 4)
 
 - **Player & Ball Detection** - YOLOv8-based detection with confidence scores
 - **Multi-Object Tracking** - ByteTrack for stable player/ball tracking across frames
 - **Team Identification** - Automatic team assignment via jersey color clustering
+- **Event Detection** - Shot and goal detection with confidence scores and score timeline
 - **Video Analysis** - Process full 90-minute matches with configurable frame sampling
 - **Annotated Overlays** - Videos with team-colored boxes, track IDs, and movement trails
-- **Data Export** - Detections, tracks, and team assignments in Parquet, CSV, and JSON formats
+- **Data Export** - Detections, tracks, team assignments, and events in Parquet, CSV, JSONL, and JSON
 - **Apple Silicon Optimized** - MPS (Metal Performance Shaders) GPU acceleration
 - **CLI Interface** - Rich progress bars and status output
-- **Analysis Tools** - Built-in tools to explore detections, tracks, and team assignments
-
-### 🚧 In Progress
-
-- Shot and goal detection
-- Event timeline generation
+- **Analysis Tools** - Built-in tools to explore detections, tracks, team assignments, and events
 
 ### 📋 Planned
 
-- Shot and goal detection with confidence scores
-- Score timeline generation
 - Local web UI for event review and confirmation
 - Field keypoint detection for normalization
 - Jersey number OCR and player identification
@@ -104,6 +98,8 @@ runs/my_analysis/
 ├── detections.parquet      # All detections with bbox, confidence, timestamps
 ├── tracks.parquet          # Stable tracks with IDs and team assignments
 ├── teams.json              # Team colors and assignments
+├── events.jsonl            # Detected events (shots, goals) with confidence
+├── score_timeline.json     # Score progression with timestamps
 └── overlay.mp4            # Annotated video with team-colored boxes, IDs, and trails
 ```
 
@@ -247,6 +243,59 @@ This generates:
 - `tracks_team_B.csv` - Team B player tracks
 - `team_summary.csv` - Per-team statistics
 - Team balance analysis and consistency checks
+
+### Working with Event Data
+
+The `events.jsonl` file contains detected shots and goals with confidence scores:
+
+```python
+import json
+
+# Load events
+events = []
+with open("runs/my_analysis/events.jsonl", "r") as f:
+    for line in f:
+        events.append(json.loads(line))
+
+# Filter by event type
+shots = [e for e in events if e["event_type"] == "shot"]
+goals = [e for e in events if e["event_type"] == "goal"]
+
+# High confidence events
+high_conf = [e for e in events if e["confidence"] > 0.8]
+
+print(f"Total shots: {len(shots)}")
+print(f"Total goals: {len(goals)}")
+```
+
+The `score_timeline.json` shows score progression:
+
+```python
+import json
+
+with open("runs/my_analysis/score_timeline.json", "r") as f:
+    timeline = json.load(f)
+
+print(f"Final score: {timeline['final_score']}")
+print(f"Total goals: {timeline['goals']}")
+
+# Goal timestamps
+for entry in timeline['timeline']:
+    print(f"{entry['timestamp']:.1f}s - {entry['score']}")
+```
+
+Or use the built-in event analysis tool:
+
+```bash
+python explore_events.py runs/my_analysis
+```
+
+This generates:
+- `events.csv` - Full event export
+- `shots.csv` - Shot events only
+- `goals.csv` - Goal events only
+- `event_timeline.csv` - Timeline for visualization
+- Event statistics and confidence analysis
 
 ## Configuration
 
@@ -436,9 +485,9 @@ ai_video_analysis/
 │   ├── video/              # Video I/O
 │   ├── vision/
 │   │   ├── detect/         # Player/ball detection
-│   │   ├── track/          # Multi-object tracking (TODO)
-│   │   └── team/           # Team identification (TODO)
-│   ├── events/             # Shot/goal detection (TODO)
+│   │   ├── track/          # Multi-object tracking (ByteTrack)
+│   │   └── team/           # Team identification (color clustering)
+│   ├── events/             # Shot/goal detection & ball trajectory
 │   └── export/             # Overlay rendering & exports
 ├── configs/                # YAML configurations
 ├── tests/                  # Unit and integration tests
@@ -475,12 +524,14 @@ ai_video_analysis/
 - ✅ Team analysis tools and export by team
 - ✅ Team consistency validation
 
-### Milestone 4: "It Detects Events"
-- [ ] Shot detection (ball velocity + trajectory)
-- [ ] Goal detection (goal region + restart patterns)
-- [ ] Score timeline with confidence
-- [ ] Events JSONL export
-- [ ] UI for event confirmation
+### ✅ Milestone 4: "It Detects Events" (v0.4 - Completed)
+- ✅ Ball trajectory analysis with velocity and direction
+- ✅ Shot detection (ball velocity + trajectory towards goal)
+- ✅ Goal detection (ball in goal region after shot)
+- ✅ Score timeline with confidence scores
+- ✅ Events JSONL export with metadata
+- ✅ Event analysis and export tools
+- [ ] UI for event confirmation (deferred to Milestone 5)
 
 ### Milestone 5: "It Has a UI"
 - [ ] FastAPI backend server

@@ -319,6 +319,115 @@ class TeamAssignmentStage(PipelineStage):
         return context
 
 
+class EventDetectionStage(PipelineStage):
+    """Stage E: Detect shots and goals."""
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__("event_detection", config)
+
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Detect shot and goal events from ball trajectory."""
+        from src.events import BallTrajectory, EventDetector
+
+        output_dir = Path(context["output_dir"])
+        tracks = context.get("tracks", [])
+        video_metadata = context["video_metadata"]
+
+        if len(tracks) == 0:
+            self.console.print("No tracks available, skipping event detection")
+            return context
+
+        # Extract ball tracks only
+        ball_tracks = [t for t in tracks if t.get("object_type") == "ball"]
+
+        if len(ball_tracks) == 0:
+            self.console.print("No ball tracks found, skipping event detection")
+            return context
+
+        self.console.print(f"Analyzing {len(ball_tracks)} ball detections for events...")
+
+        # Build ball trajectory
+        trajectory = BallTrajectory(smoothing_window=3)
+        trajectory.add_from_tracks(ball_tracks)
+
+        self.console.print(f"Ball trajectory: {len(trajectory.points)} points")
+
+        # Initialize event detector
+        detector = EventDetector(
+            frame_width=video_metadata["width"],
+            frame_height=video_metadata["height"],
+            shot_velocity_threshold=15.0,  # pixels/frame
+            goal_confidence_threshold=0.6,
+            fps=video_metadata["fps"],
+        )
+
+        # Detect shots
+        shot_events = detector.detect_shots(trajectory)
+        self.console.print(f"Detected {len(shot_events)} potential shots")
+
+        # Detect goals
+        goal_events = detector.detect_goals(trajectory, shot_events)
+        self.console.print(f"Detected {len(goal_events)} potential goals")
+
+        # Combine all events
+        all_events = shot_events + goal_events
+        all_events = sorted(all_events, key=lambda e: e.timestamp)
+
+        # Save events to JSONL
+        events_path = output_dir / "events.jsonl"
+        with open(events_path, "w") as f:
+            for event in all_events:
+                event_dict = {
+                    "event_type": event.event_type,
+                    "frame_idx": event.frame_idx,
+                    "timestamp": event.timestamp,
+                    "confidence": event.confidence,
+                    "location": list(event.location) if event.location else None,
+                    "metadata": event.metadata,
+                }
+                f.write(json.dumps(event_dict) + "\n")
+
+        self.console.print(f"Saved events to: {events_path}")
+
+        # Create score timeline from goal events
+        score_timeline = []
+        current_score = {"team_a": 0, "team_b": 0}
+
+        for event in goal_events:
+            # For now, assign goals alternately (in future, use team info)
+            # This is simplified - would need goal region -> team mapping
+            goal_region = event.metadata.get("goal_region", "unknown")
+
+            if goal_region == "top":
+                current_score["team_a"] += 1
+            elif goal_region == "bottom":
+                current_score["team_b"] += 1
+
+            score_timeline.append({
+                "timestamp": event.timestamp,
+                "frame_idx": event.frame_idx,
+                "score": dict(current_score),
+                "confidence": event.confidence,
+                "goal_region": goal_region,
+            })
+
+        # Save score timeline
+        timeline_path = output_dir / "score_timeline.json"
+        with open(timeline_path, "w") as f:
+            json.dump({
+                "goals": len(goal_events),
+                "final_score": current_score,
+                "timeline": score_timeline,
+            }, f, indent=2)
+
+        self.console.print(f"Saved score timeline to: {timeline_path}")
+        self.console.print(f"Final score: {current_score['team_a']} - {current_score['team_b']}")
+
+        context["events"] = all_events
+        context["score_timeline"] = score_timeline
+        return context
+
+
 class OverlayStage(PipelineStage):
     """Stage F: Render overlay video."""
 
@@ -490,6 +599,7 @@ def main(video: str, output: str, config: str | None):
     pipeline.add_stage(DetectionStage(pipeline_config))
     pipeline.add_stage(TrackingStage(pipeline_config))
     pipeline.add_stage(TeamAssignmentStage(pipeline_config))
+    pipeline.add_stage(EventDetectionStage(pipeline_config))
     pipeline.add_stage(OverlayStage(pipeline_config))
 
     # Run pipeline
