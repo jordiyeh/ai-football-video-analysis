@@ -1,0 +1,55 @@
+# Fast configuration for testing on long videos
+
+video:
+  sampling_strategy: "every_nth"
+  sampling_interval: 10  # Process every 10th frame (~10x faster)
+  target_fps: null
+
+detection:
+  model_name: "yolov8m.pt"  # Medium model (faster than yolov8x)
+  device: "mps"
+  confidence_threshold: 0.5
+  batch_size: 16  # Larger batch for efficiency
+  player_class_id: 0
+  ball_class_id: 32
+
+tracking:
+  algorithm: "bytetrack"
+  max_age: 30
+  min_hits: 3
+  iou_threshold: 0.3
+
+team:
+  method: "color_clustering"
+  n_clusters: 2
+  our_team_color: null
+  opponent_color: null
+
+events:
+  detect_shots: true
+  detect_goals: true
+  detect_passes: false
+  shot_velocity_threshold: 5.0
+  goal_confidence_threshold: 0.7
+
+overlay:
+  bbox_thickness: 2
+  show_confidence: true
+  show_track_ids: true
+  show_team_colors: true
+  player_color: "#00FF00"
+  ball_color: "#FF0000"
+  trail_length: 30
+
+export:
+  save_detections: true
+  save_tracks: true
+  save_events: true
+  save_overlay_video: true
+  detections_format: "parquet"
+  video_codec: "mp4v"
+  video_fps: null
+
+cache_dir: ".cache"
+output_dir: "runs"
+enable_cache: true

@@ -2,15 +2,33 @@
 
 A local-first soccer video analysis system optimized for Apple Silicon that detects players, tracks the ball, identifies teams, and recognizes key events like shots and goals.
 
-## Features (v1)
+**Status**: ✅ Milestone 1 complete and tested on a full 96-minute match (M1 MacBook Air)
 
-- Player and ball detection using YOLOv8
-- Real-time tracking with visualization
+## Features
+
+### ✅ Currently Available (v0.1 - Milestone 1)
+
+- **Player & Ball Detection** - YOLOv8-based detection with confidence scores
+- **Video Analysis** - Process full 90-minute matches with configurable frame sampling
+- **Annotated Overlays** - Generate videos with bounding boxes and labels
+- **Data Export** - Detections in Parquet, CSV, and JSONL formats
+- **Apple Silicon Optimized** - MPS (Metal Performance Shaders) GPU acceleration
+- **CLI Interface** - Rich progress bars and status output
+- **Detection Analysis** - Built-in tools to explore and query detection data
+
+### 🚧 In Progress
+
+- Multi-object tracking (ByteTrack)
 - Team identification via jersey color clustering
-- Shot and goal detection
-- Annotated video overlay generation
-- Local web UI for event review
-- Multiple export formats (Parquet, JSONL, CSV)
+- Track trails visualization
+
+### 📋 Planned
+
+- Shot and goal detection with confidence scores
+- Score timeline generation
+- Local web UI for event review and confirmation
+- Field keypoint detection for normalization
+- Jersey number OCR and player identification
 
 ## System Requirements
 
@@ -80,12 +98,45 @@ After running analysis, you'll find:
 
 ```
 runs/my_analysis/
-├── run_manifest.json       # Configuration and metadata
-├── video_metadata.json     # Video properties (fps, resolution, etc.)
-├── detections.parquet      # Per-frame detections
-├── overlay.mp4            # Annotated video with bounding boxes
-└── summary.json           # Aggregate statistics (TODO)
+├── run_manifest.json       # Configuration snapshot and runtime info
+├── video_metadata.json     # Video properties (fps, resolution, duration)
+├── detections.parquet      # All detections with bbox, confidence, timestamps
+└── overlay.mp4            # Annotated video with bounding boxes
 ```
+
+### Working with Detection Data
+
+The `detections.parquet` file contains all player and ball detections:
+
+```python
+import pandas as pd
+
+# Load detections
+df = pd.read_parquet("runs/my_analysis/detections.parquet")
+
+# Columns: object_type, bbox, center, confidence, class_id,
+#          width, height, area, frame_idx, timestamp
+
+# Example queries
+players = df[df.object_type == 'player']
+ball = df[df.object_type == 'ball']
+high_confidence = df[df.confidence > 0.8]
+
+# Export to CSV for Excel/Numbers
+df.to_csv("detections.csv", index=False)
+```
+
+Or use the built-in analysis tool:
+
+```bash
+python explore_detections.py
+```
+
+This generates:
+- `detections.csv` - Full export for spreadsheets
+- `ball_detections.csv` - Ball-only tracking data
+- `frame_summary.csv` - Per-frame statistics
+- Analysis of detection quality and patterns
 
 ## Configuration
 
@@ -157,39 +208,70 @@ mypy src/
 
 ### For Full Matches (90 minutes)
 
-1. **Use frame sampling** to reduce processing time:
+Use the included `configs/fast_test.yaml` for quick testing:
+
+```bash
+veo-analyze --video match.mp4 --output runs/test --config configs/fast_test.yaml
+```
+
+This configuration:
+- Samples every 10th frame (~10x speedup)
+- Uses YOLOv8m (medium model, good balance)
+- Batch size 16 for efficiency
+- MPS GPU acceleration
+
+### Custom Optimization
+
+1. **Adjust frame sampling** to balance speed vs detail:
    ```yaml
    video:
-     sampling_strategy: "every_2nd"  # Process every 2nd frame
+     sampling_strategy: "every_nth"
+     sampling_interval: 10  # every 10th frame = ~10x faster
    ```
 
-2. **Lower model size** for faster inference:
+2. **Choose model size** based on accuracy needs:
    ```yaml
    detection:
-     model_name: "yolov8m.pt"  # medium model (faster than yolov8x)
+     model_name: "yolov8m.pt"  # m=medium, x=extra-large, n=nano
    ```
 
 3. **Increase batch size** if you have enough memory:
    ```yaml
    detection:
-     batch_size: 16  # default is 8
+     batch_size: 16  # Higher = faster but more memory
    ```
 
-### Expected Processing Times (M1 Max)
+### Tested Performance (Real-world Results)
 
-- **YOLOv8x**: ~15-20 FPS (3-4 hours for full match)
-- **YOLOv8m**: ~30-40 FPS (1.5-2 hours for full match)
-- **YOLOv8n**: ~60-80 FPS (~1 hour for full match)
+**M1 MacBook Air - 96-minute match (173K frames)**
 
-*Times with every_frame sampling at 30 FPS source video*
+With `configs/fast_test.yaml` (every 10th frame, YOLOv8m, MPS):
+- **Processing time**: 49 minutes
+- **Frames analyzed**: 17,285 (sampled)
+- **Detections**: 175,399 (174,784 players, 615 ball)
+- **Average**: ~10 players per frame
+- **Ball detection rate**: 3.6% of frames
+
+### Expected Times by Model & Sampling
+
+| Model | Sampling | M1 Air | M1 Pro/Max | Notes |
+|-------|----------|--------|------------|-------|
+| YOLOv8m | every 10th | ~50 min | ~35 min | Recommended for fast testing |
+| YOLOv8m | every frame | ~8 hours | ~5 hours | Best for production |
+| YOLOv8x | every frame | ~12 hours | ~7 hours | Maximum accuracy |
+| YOLOv8n | every frame | ~4 hours | ~2.5 hours | Fast but less accurate |
+
+*Times for 90-minute matches at 30 FPS source. Add 30% for overlay rendering.*
 
 ## Troubleshooting
 
 ### MPS Backend Issues
 
-If you see MPS-related errors:
+**Note**: MPS (GPU) works reliably on M1-M4 Macs with PyTorch 2.9+. Model initialization can take 1-2 minutes - this is normal, not hanging.
 
-1. Fallback to CPU:
+If you experience crashes or errors:
+
+1. Fallback to CPU (slower but stable):
    ```yaml
    detection:
      device: "cpu"
@@ -199,6 +281,8 @@ If you see MPS-related errors:
    ```bash
    pip install --upgrade torch torchvision
    ```
+
+3. Check Activity Monitor - high CPU usage during "detection" stage means it's working, not stuck
 
 ### Memory Issues
 
@@ -255,41 +339,50 @@ ai_video_analysis/
 
 ## Roadmap
 
-### Milestone 1: "Hello World" (Current)
-- ✅ Video ingestion and validation
+### ✅ Milestone 1: "Hello World" (v0.1 - Completed)
+- ✅ Video ingestion and metadata extraction
 - ✅ Player and ball detection with YOLOv8
+- ✅ MPS (GPU) acceleration for Apple Silicon
 - ✅ Annotated video overlay generation
-- ✅ CLI interface with progress bars
+- ✅ CLI interface with rich progress bars
+- ✅ Parquet/CSV data export
+- ✅ Detection analysis tools
+- ✅ Tested on full 96-minute match
 
-### Milestone 2: "It Tracks"
-- [ ] ByteTrack implementation
+### Milestone 2: "It Tracks" (In Progress)
+- [ ] ByteTrack multi-object tracking
 - [ ] Stable track IDs across frames
 - [ ] Track quality metrics
-- [ ] Track trails in overlay
+- [ ] Track trails in overlay visualization
+- [ ] Handle occlusions and track fragmentation
 
 ### Milestone 3: "It Knows Teams"
-- [ ] Jersey color clustering
-- [ ] Team assignment logic
-- [ ] Team-colored overlays
-- [ ] Manual correction UI
+- [ ] Jersey color extraction and clustering
+- [ ] Team assignment (ours vs opponent)
+- [ ] Team-colored overlays and labels
+- [ ] Manual team correction interface
+- [ ] Confidence scores for team assignments
 
 ### Milestone 4: "It Detects Events"
-- [ ] Shot detection (ball velocity heuristics)
-- [ ] Goal detection (goal region analysis)
-- [ ] Score timeline generation
+- [ ] Shot detection (ball velocity + trajectory)
+- [ ] Goal detection (goal region + restart patterns)
+- [ ] Score timeline with confidence
 - [ ] Events JSONL export
+- [ ] UI for event confirmation
 
 ### Milestone 5: "It Has a UI"
-- [ ] FastAPI backend
+- [ ] FastAPI backend server
 - [ ] Local web interface
-- [ ] Timeline with event markers
-- [ ] Video player with jump-to functionality
+- [ ] Interactive timeline with event markers
+- [ ] Video player with frame-accurate seeking
+- [ ] Export and sharing functionality
 
-### Milestone 6: "It's Polished"
+### Milestone 6: "It's Production Ready"
+- [ ] Caching and resumable pipeline
 - [ ] Error recovery and validation
-- [ ] Performance optimization
-- [ ] Golden regression tests
-- [ ] Documentation and examples
+- [ ] Performance profiling and optimization
+- [ ] Golden regression test suite
+- [ ] Comprehensive documentation
 
 ## Contributing
 
