@@ -4,6 +4,8 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 
 **Status**: ✅ Milestones 1-5 complete - Full pipeline with local web UI (M1 MacBook Air)
 
+**Latest**: Player identity persistence - ReID embeddings + SQLite database for cross-video player matching
+
 ## Features
 
 ### ✅ Currently Available (v0.5 - Milestones 1-5)
@@ -20,11 +22,78 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 - **CLI Interface** - Rich progress bars and status output
 - **Analysis Tools** - Built-in tools to explore detections, tracks, team assignments, and events
 
+### 🆕 Recent Updates (v0.5.10)
+
+- **Player identity persistence** (NEW): Track players across videos using ReID embeddings
+  - OSNet-x0.25 ReID model (~2MB, MPS-compatible) extracts 512D player embeddings
+  - SQLite database stores player identities with centroid embeddings
+  - Automatic player matching: auto (>0.85), suggested (>0.70), new_player (<0.60)
+  - Per-run `player_assignments.json` with track-to-player mapping
+  - API endpoints: list/get/update players, assign appearances, merge duplicates
+  - Configurable via `reid` and `identity` sections in YAML
+  - 55 new unit tests for ReID, database, and matching
+
+### v0.5.9
+
+- **Celebration detection**: Detect player celebrations as goal confirmation signal
+  - Arms-up pose detection via bbox aspect ratio changes
+  - Group huddle detection via player convergence analysis
+  - Integrated as new weighted signal (0.15) in shot fusion engine
+  - Works when ball tracking fails at critical moments
+  - Configurable via `events.alternative_shot.celebration` in YAML
+- **Ball-specific detection model**: Specialized soccer ball detector for dramatically improved ball detection
+  - `BallSpecialistDetector` wraps HuggingFace soccer ball model (~6MB, auto-downloads)
+  - `DetectorEnsemble` combines YOLO + specialist with Weighted Box Fusion (WBF)
+  - Confidence boost when multiple detectors agree on same ball
+  - Enable with `--config configs/ball_specialist.yaml`
+  - Backward compatible (disabled by default)
+- **Visual goal region detection**: Replaces hardcoded 15% edge margins with visual detection
+  - Hough line transforms detect crossbars and goal lines
+  - HSV white threshold detects goalposts
+  - Temporal smoothing with outlier rejection handles camera movement
+  - Graceful fallback to heuristic when visual detection fails
+  - Configurable via `events.goal_region` in YAML
+- **Event confirmation UI**: Approve/reject auto-detected events, add manual events at any timestamp
+  - Status badges (pending/confirmed/rejected) on all events
+  - User corrections stored in `events_confirmed.jsonl` (original data preserved)
+  - Manual events with dashed border styling
+  - Persistent across sessions
+- **Alternative shot detection**: Detect shots even with sparse ball data (works with <1% ball detection rate!)
+  - Kick detection: finds ball near player foot regions
+  - Goal area entry: detects ball entering goal zones
+  - Goalkeeper dive detection: identifies diving motion from bbox changes
+  - Player clustering: analyzes attacking formations
+  - Celebration detection: confirms goals via player reactions
+  - Multi-signal fusion with weighted confidence scoring
+- **Ball detection boosting**: Multi-scale detection, temporal filtering, and candidate tracking to dramatically improve ball detection rate
+  - Multi-scale (0.5x, 1.0x, 1.5x) catches small balls that single-scale misses
+  - Temporal filter rejects single-frame spurious detections
+  - Candidate tracker with Kalman prediction bridges short occlusions
+  - Lower confidence threshold (0.15 default) with intelligent filtering
+- **Soft-NMS merging**: Improved detection merging across scales without hard elimination
+- **Configurable ball settings**: New `ball:` section in YAML configs for fine-tuning
+- **Physics-based ball interpolation**: Extended from 45 frames to 300+ frames using Kalman filter with bidirectional blending
+- **Resume mode**: Skip completed stages with `--resume` flag
+- **Dynamic overlay**: UI renders overlay in JavaScript (original video + canvas)
+
+### 🆕 v0.5.8: Performance Profiling
+
+- **Per-stage timing in manifest**: `run_manifest.json` (schema 1.1) now includes detailed timing metrics
+  - Duration, items processed, items/sec for each pipeline stage
+  - Custom metrics per stage (detector type, detection counts, etc.)
+  - Device info (mps/cuda/cpu) and platform details
+- **Profiling script**: `scripts/profile_pipeline.py` for deep performance analysis
+  - cProfile integration with `.prof` output and summary
+  - py-spy flame graph generation (SVG)
+  - Profile analysis tools
+- **Timing summary**: Pipeline now prints percentage breakdown by stage
+- **Documented optimizations**: See `docs/profiling.md` for optimization opportunities
+
 ### 📋 Planned
 
-- Event confirmation and editing in UI
 - Field keypoint detection for normalization
 - Jersey number OCR and player identification
+- See `docs/ENHANCEMENTS.md` for full roadmap
 
 ## System Requirements
 
@@ -88,6 +157,30 @@ veo-analyze --video path/to/match.mp4 --output runs/my_analysis
 veo-analyze --video path/to/match.mp4 --output runs/my_analysis --config configs/custom.yaml
 ```
 
+### Resume from Cache
+
+Skip completed stages (useful for iterating on later stages):
+
+```bash
+veo-analyze --video path/to/match.mp4 --output runs/my_analysis --resume
+```
+
+### Skip Overlay Rendering
+
+The overlay stage is slow (~40 min for 90-min match). Use dynamic UI rendering instead:
+
+```bash
+veo-analyze --video path/to/match.mp4 --output runs/my_analysis --no-overlay
+```
+
+### Using Improved Detection Config
+
+For better event detection (lower thresholds, longer interpolation):
+
+```bash
+veo-analyze --video path/to/match.mp4 --output runs/my_analysis --config configs/improved_detection.yaml
+```
+
 ### Output Structure
 
 After running analysis, you'll find:
@@ -99,7 +192,9 @@ runs/my_analysis/
 ├── detections.parquet      # All detections with bbox, confidence, timestamps
 ├── tracks.parquet          # Stable tracks with IDs and team assignments
 ├── teams.json              # Team colors and assignments
+├── player_assignments.json # Track-to-player identity mapping (ReID)
 ├── events.jsonl            # Detected events (shots, goals) with confidence
+├── events_confirmed.jsonl  # User confirmations/rejections/manual events (UI)
 ├── score_timeline.json     # Score progression with timestamps
 └── overlay.mp4            # Annotated video with team-colored boxes, IDs, and trails
 ```
@@ -319,6 +414,8 @@ The UI will open at http://localhost:8000 with:
 - Visual timeline with shot/goal markers
 - Score display and event confidence
 - Frame-accurate seeking
+- Event confirmation (approve/reject auto-detected events)
+- Manual event addition at current video position
 
 **Usage:**
 1. Click a run from the list to load it
@@ -326,6 +423,15 @@ The UI will open at http://localhost:8000 with:
 3. Click events in the right panel to seek to that moment
 4. Click markers on the timeline to jump to events
 5. Review confidence scores and event details
+6. Click ✓ to confirm or ✗ to reject auto-detected events
+7. Click "+ Add Event" to manually add shots or goals at current timestamp
+
+**Event Confirmation:**
+- Pending events show approve/reject buttons
+- Confirmed events are slightly dimmed with green "confirmed" badge
+- Rejected events are strikethrough with orange "rejected" badge
+- Manual events have dashed border and can be deleted
+- All corrections saved to `events_confirmed.jsonl` (original data preserved)
 
 The UI automatically loads:
 - Video overlay (`overlay.mp4`)
@@ -352,8 +458,28 @@ video:
 detection:
   model_name: "yolov8x.pt"         # x = extra large (best accuracy)
   device: "mps"                     # mps, cuda, or cpu
-  confidence_threshold: 0.5         # minimum confidence for detections
+  confidence_threshold: 0.5         # minimum confidence for player detections
   batch_size: 8                     # frames per batch
+  # Ball-specific settings for improved detection
+  ball:
+    confidence_threshold: 0.15      # lower threshold for small ball
+    enable_multiscale: true         # detect at multiple scales
+    scales: [0.5, 1.0, 1.5]         # scale factors
+    enable_temporal_filter: true    # reject spurious detections
+    enable_candidate_tracking: true # soft-track before committing
+  # Ball specialist model (optional, disabled by default)
+  ball_specialist:
+    enabled: false                  # enable for better ball detection
+    model_source: "keremberke/yolov8n-soccer-ball-detection"
+  # Detector ensemble (combines YOLO + specialist)
+  ensemble:
+    enabled: false                  # enable when using ball_specialist
+    fusion_type: "wbf"              # weighted box fusion
+```
+
+Or use the pre-configured ball specialist config:
+```bash
+veo-analyze --video match.mp4 --output runs/test --config configs/ball_specialist.yaml
 ```
 
 ### Overlay Settings
@@ -373,15 +499,30 @@ overlay:
 ### Running Tests
 
 ```bash
-# All tests
+# All tests (400+ tests, ~60% coverage)
 pytest tests/ -v
 
 # Unit tests only
 pytest tests/unit/ -v
 
-# With coverage
+# Integration tests
+pytest tests/integration/ -v
+
+# Golden/regression tests
+pytest tests/golden/ -v
+
+# With coverage report
+pytest tests/ --cov=src --cov-report=term-missing
+
+# Generate HTML coverage report
 pytest tests/ --cov=src --cov-report=html
+open coverage_html/index.html
 ```
+
+**Test Coverage**: ~60% (3,345 lines covered)
+- Unit tests: ByteTrack, Kalman filter, event detection, team clustering, colors, pipeline, video reader
+- Integration tests: detection-to-tracking flow, team assignment pipeline, event detection pipeline
+- Golden tests: regression testing for deterministic outputs
 
 ### Code Formatting
 
@@ -458,6 +599,39 @@ With `configs/fast_test.yaml` (every 10th frame, YOLOv8m, MPS):
 
 *Times for 90-minute matches at 30 FPS source. Add 30% for overlay rendering.*
 
+## Known Limitations
+
+### Ball Detection Rate
+
+Ball detection can be challenging due to:
+- Small ball size relative to frame
+- YOLOv8's generic "sports ball" class (not soccer-specific)
+- Veo camera zoom/motion blur
+
+**Mitigation**:
+- v0.5.3 adds ball detection boosting with multi-scale detection, temporal filtering, and candidate tracking
+- v0.5.7 adds specialized soccer ball detector with ensemble fusion for significantly improved detection
+- Use `configs/ball_specialist.yaml` for best ball detection (requires `pip install huggingface_hub`)
+- Use `configs/improved_detection.yaml` for aggressive settings without specialist model
+
+**Impact**: Event detection accuracy depends on ball tracking quality. Physics-based interpolation (300+ frames) bridges gaps.
+
+### Goal Region Detection
+
+Goal regions use visual detection with heuristic fallback (v0.5.6+):
+- **Visual detection**: Hough lines for crossbars, HSV threshold for goalposts
+- **Temporal smoothing**: Handles camera movement and zoom
+- **Fallback**: Uses heuristic (top/bottom 15%) when visual detection confidence is low
+
+**Limitations**:
+- Visual detection works best with clearly visible white goalposts
+- Assumes goals are at top/bottom edges (broadcast-style view)
+- May fall back to heuristic in low-contrast or heavily zoomed footage
+
+### Virtual Environment
+
+The `.venv` symlinks may break after Homebrew Python updates. See CLAUDE.md for workarounds.
+
 ## Troubleshooting
 
 ### MPS Backend Issues
@@ -521,12 +695,21 @@ ai_video_analysis/
 │   ├── video/              # Video I/O
 │   ├── vision/
 │   │   ├── detect/         # Player/ball detection
+│   │   │   ├── yolo.py     # YOLOv8 detector
+│   │   │   ├── ball_specialist.py  # Soccer ball specialist
+│   │   │   ├── ensemble.py # Detector ensemble + WBF
+│   │   │   └── ball_boost.py # Multi-scale + temporal filtering
 │   │   ├── track/          # Multi-object tracking (ByteTrack)
-│   │   └── team/           # Team identification (color clustering)
+│   │   ├── team/           # Team identification (color clustering)
+│   │   ├── field/          # Goal region detection
+│   │   └── reid/           # Player re-identification (OSNet)
+│   ├── identity/           # Player identity persistence (SQLite)
 │   ├── events/             # Shot/goal detection & ball trajectory
+│   ├── ui/                 # Web UI server and static files
 │   └── export/             # Overlay rendering & exports
 ├── configs/                # YAML configurations
 ├── tests/                  # Unit and integration tests
+├── docs/                   # Enhancement docs and specs
 ├── data/samples/           # Sample videos (gitignored)
 ├── runs/                   # Output artifacts (gitignored)
 └── models/                 # Cached model weights (gitignored)
@@ -575,16 +758,15 @@ ai_video_analysis/
 - ✅ Video player with frame-accurate seeking
 - ✅ Event list with click-to-seek
 - ✅ Score display and confidence indicators
-- [ ] Event confirmation and editing (deferred to v0.6)
+- ✅ Event confirmation and editing (approve/reject, manual add)
 - [ ] Export and sharing functionality (deferred to v0.6)
 
 ### Milestone 6: "It's Production Ready"
-- [ ] Event confirmation and manual editing in UI
 - [ ] Export functionality from UI
 - [ ] Caching and resumable pipeline
 - [ ] Error recovery and validation
-- [ ] Performance profiling and optimization
-- [ ] Golden regression test suite
+- [x] Performance profiling and optimization
+- [x] Golden regression test suite
 - [ ] Comprehensive documentation
 
 ## Contributing

@@ -8,10 +8,47 @@ video:
 detection:
   model_name: "yolov8x.pt"  # YOLOv8 model (x = extra large, best accuracy)
   device: "mps"  # Options: "mps" (Apple Silicon), "cuda" (NVIDIA), "cpu"
-  confidence_threshold: 0.5  # Minimum confidence for detections
+  confidence_threshold: 0.5  # Minimum confidence for player detections
   batch_size: 8  # Frames per batch (adjust based on memory)
   player_class_id: 0  # COCO person class
   ball_class_id: 32  # COCO sports ball class
+  # Ball-specific detection settings (boost ball detection rate)
+  ball:
+    confidence_threshold: 0.15  # Lower threshold for small ball detection
+    enable_multiscale: true  # Detect at multiple scales for small objects
+    scales: [0.5, 1.0, 1.5]  # Scale factors for multi-scale detection
+    merge_iou_threshold: 0.5  # IoU threshold for merging multi-scale detections
+    enable_temporal_filter: true  # Filter spurious single-frame detections
+    temporal_window_size: 5  # Frames to consider for temporal consistency
+    max_frame_displacement: 100.0  # Max pixel displacement between frames
+    min_temporal_confirmations: 2  # Min confirmations within window
+    enable_candidate_tracking: true  # Soft-track before committing detections
+    candidate_min_hits: 3  # Consecutive hits to confirm candidate
+    candidate_max_age: 5  # Max frames without detection before losing track
+    max_size_ratio: 0.05  # Max ball bbox dimension as fraction of frame
+    max_aspect_ratio: 3.0  # Reject very elongated boxes (balls should be ~square)
+
+  # Ball specialist detector (specialized soccer ball model from HuggingFace)
+  # Disabled by default for backward compatibility
+  ball_specialist:
+    enabled: false
+    model_source: "keremberke/yolov8n-soccer-ball-detection"  # HuggingFace model ID
+    confidence_threshold: 0.3
+    ball_class_id: 0  # Class ID for ball in specialized model
+    max_size_ratio: 0.08  # Slightly larger than general detection
+    max_aspect_ratio: 3.0
+    cache_dir: "models"
+
+  # Detector ensemble (combines multiple detectors with Weighted Box Fusion)
+  # Disabled by default for backward compatibility
+  ensemble:
+    enabled: false
+    weights:
+      yolo: 1.0
+      ball_specialist: 1.5  # Prefer specialist for ball detection
+    iou_threshold: 0.5  # IoU threshold for clustering boxes
+    skip_box_threshold: 0.01  # Skip boxes below this confidence
+    fusion_type: "wbf"  # Options: "wbf", "nms", "soft_nms"
 
 tracking:
   algorithm: "bytetrack"  # Options: "bytetrack", "botsort", "deepsort"
@@ -32,6 +69,85 @@ events:
   shot_velocity_threshold: 5.0  # pixels/frame
   goal_confidence_threshold: 0.7
 
+  # Alternative shot detection (using player behavior signals when ball data is sparse)
+  alternative_shot:
+    enabled: true
+    ball_coverage_threshold: 0.5  # Use alternative if ball coverage < 50%
+
+    # Kick detection
+    foot_region_fraction: 0.2
+    kick_proximity_threshold: 50.0
+    kick_lookback_frames: 5
+    kick_lookahead_frames: 10
+
+    # Goal entry detection
+    goal_entry_margin: 0.05
+    max_kick_association_frames: 90
+
+    # Goalkeeper dive detection
+    gk_region_margin: 0.20
+    gk_dive_displacement: 30.0
+    gk_aspect_change_threshold: 1.5
+
+    # Player clustering
+    attack_spread_threshold: 0.25
+    min_players_per_team: 5
+
+    # Signal fusion
+    kick_weight: 0.35
+    goal_entry_weight: 0.30
+    gk_dive_weight: 0.25
+    attack_context_weight: 0.10
+    fusion_min_confidence: 0.3
+    fusion_temporal_window: 60
+
+    # Celebration detection (for goal confirmation)
+    celebration:
+      enabled: true
+      arms_up_aspect_ratio_threshold: 0.5
+      arms_up_height_change_threshold: 1.2
+      arms_up_min_duration_frames: 5
+      huddle_max_player_distance: 100.0
+      huddle_min_players: 3
+      huddle_convergence_threshold: 0.5
+      post_shot_window_frames: 150  # 5 sec at 30fps
+      celebration_cooldown_frames: 300  # 10 sec cooldown
+      signal_weight: 0.15
+      min_confidence: 0.4
+
+  # Goal region detection (visual detection with heuristic fallback)
+  goal_region:
+    enabled: true
+    detection_method: "hybrid"  # Options: "visual", "heuristic", "hybrid"
+
+    # Heuristic fallback (default regions when visual detection fails)
+    heuristic_edge_margin: 0.15  # Goal regions within 15% of top/bottom edges
+    heuristic_goal_width_fraction: 0.30  # Goal width as fraction of frame width
+
+    # Hough line detection for crossbar/goal lines
+    canny_low_threshold: 50
+    canny_high_threshold: 150
+    hough_threshold: 100
+    hough_min_line_length: 100
+    hough_max_line_gap: 10
+    line_angle_tolerance: 15.0  # Degrees from horizontal/vertical
+
+    # Goalpost detection (HSV white threshold)
+    white_hsv_low: [0, 0, 200]  # Low H, low S, high V = white
+    white_hsv_high: [180, 30, 255]  # Full H range, low S, high V
+    min_goalpost_height: 0.05  # Min height as fraction of frame
+    goalpost_aspect_ratio_min: 3.0  # Goalposts are tall and narrow
+
+    # Temporal smoothing
+    enable_temporal_smoothing: true
+    smoothing_window_frames: 30
+    max_frame_displacement: 50.0  # Max pixels jump between frames
+
+    # Fallback strategy thresholds
+    fallback_confidence_threshold: 0.3  # Use heuristic below this
+    blend_threshold: 0.6  # Blend visual+heuristic between 0.3 and 0.6
+    interpolation_max_gap: 60  # Max frames to interpolate across
+
 overlay:
   bbox_thickness: 2
   show_confidence: true
@@ -49,6 +165,26 @@ export:
   detections_format: "parquet"  # Options: "parquet", "jsonl", "csv"
   video_codec: "mp4v"  # FourCC codec
   video_fps: null  # If null, use original fps
+
+# ReID (Re-Identification) configuration for player embeddings
+reid:
+  model_name: "osnet_x0_25"  # OSNet-x0.25 (~2MB, fast, good accuracy)
+  device: "mps"  # Options: "mps" (Apple Silicon), "cuda" (NVIDIA), "cpu"
+  embedding_dim: 512  # Standard for OSNet
+  crop_size: [256, 128]  # height x width
+  batch_size: 32
+  cache_dir: "models"
+
+# Player identity persistence configuration
+identity:
+  enabled: true
+  database_path: "players.db"  # Project-level, shared across runs
+  samples_per_track: 10  # Number of crop samples per track
+  min_crop_height: 50  # Minimum crop height in pixels
+  min_crop_width: 25  # Minimum crop width in pixels
+  auto_match_threshold: 0.85  # Auto-assign player above this similarity
+  suggest_threshold: 0.70  # Suggest match above this similarity
+  new_player_threshold: 0.60  # Create new player below this similarity
 
 cache_dir: ".cache"
 output_dir: "runs"
