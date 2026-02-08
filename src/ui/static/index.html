@@ -1561,6 +1561,67 @@
             margin-bottom: 0.75rem;
         }
 
+        .visualization-card {
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.65rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .visualization-controls {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 0.45rem;
+        }
+
+        .visualization-controls .form-input {
+            min-height: 32px;
+            font-size: 0.75rem;
+            padding: 0.35rem 0.45rem;
+        }
+
+        .visualization-meta {
+            display: grid;
+            gap: 0.35rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .visualization-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .viz-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--text);
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.18rem 0.45rem;
+        }
+
+        .visualization-image-wrap {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #0f3d1f;
+            overflow: hidden;
+            min-height: 220px;
+        }
+
+        .visualization-image {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
         .match-stats-card-header {
             display: flex;
             justify-content: space-between;
@@ -2773,6 +2834,49 @@
                             </div>
                             <div id="matchStatsContent">
                                 <p class="loading">No match stats data loaded</p>
+                            </div>
+                        </div>
+                        <div class="visualization-card">
+                            <div class="match-stats-card-header">
+                                <span class="match-stats-card-title">Map Visualizations</span>
+                                <button class="section-export-btn" onclick="loadVisualization(currentRun)">Refresh</button>
+                            </div>
+                            <div class="visualization-controls">
+                                <select id="visualizationType" class="form-input" onchange="onVisualizationControlsChanged()">
+                                    <option value="pass_map">Pass Map</option>
+                                    <option value="tactical_map">Tactical Map</option>
+                                </select>
+                                <select id="visualizationTeamFilter" class="form-input" onchange="onVisualizationControlsChanged()">
+                                    <option value="">Team: All</option>
+                                    <option value="ours">Team: Ours</option>
+                                    <option value="opponent">Team: Opponent</option>
+                                    <option value="unknown">Team: Unknown</option>
+                                </select>
+                                <input
+                                    id="visualizationPlayerFilter"
+                                    type="number"
+                                    class="form-input"
+                                    placeholder="Player/Track"
+                                    onchange="onVisualizationControlsChanged()"
+                                >
+                                <input
+                                    id="visualizationMinConfidence"
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value="0"
+                                    class="form-input"
+                                    placeholder="Min conf"
+                                    onchange="onVisualizationControlsChanged()"
+                                >
+                                <label class="identity-toggle" style="font-size:0.72rem;">
+                                    <input id="visualizationIncludePoints" type="checkbox" onchange="onVisualizationControlsChanged()">
+                                    Include point cloud
+                                </label>
+                            </div>
+                            <div id="visualizationContent">
+                                <p class="loading">Select a run to load visualization maps</p>
                             </div>
                         </div>
                         <div id="teamAnalyticsContent">

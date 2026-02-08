@@ -13,15 +13,25 @@ from src.export.visualizations.field_canvas import (
     build_field_canvas,
     normalize_heat_grid,
 )
+from src.export.visualizations.heat_map import (
+    HEAT_MAP_SCHEMA_VERSION,
+    HeatMapRenderer,
+    build_heat_map,
+)
+from src.export.visualizations.pass_map import (
+    PASS_MAP_SCHEMA_VERSION,
+    PassMapRenderer,
+    build_pass_map,
+)
 from src.export.visualizations.shot_map import (
     SHOT_MAP_SCHEMA_VERSION,
     ShotMapRenderer,
     build_shot_map,
 )
-from src.export.visualizations.heat_map import (
-    HEAT_MAP_SCHEMA_VERSION,
-    HeatMapRenderer,
-    build_heat_map,
+from src.export.visualizations.tactical_map import (
+    TACTICAL_MAP_SCHEMA_VERSION,
+    TacticalMapRenderer,
+    build_tactical_map,
 )
 
 __all__ = [
@@ -40,4 +50,10 @@ __all__ = [
     "HEAT_MAP_SCHEMA_VERSION",
     "HeatMapRenderer",
     "build_heat_map",
+    "PASS_MAP_SCHEMA_VERSION",
+    "PassMapRenderer",
+    "build_pass_map",
+    "TACTICAL_MAP_SCHEMA_VERSION",
+    "TacticalMapRenderer",
+    "build_tactical_map",
 ]

@@ -3504,6 +3504,241 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         with open(match_stats_path) as f:
             return json.load(f)
 
+    def _sanitize_json_value(value: Any) -> Any:
+        """Normalize NumPy/Pandas scalars for JSON-safe payloads."""
+        import math
+
+        import numpy as np
+
+        if value is None:
+            return None
+        if isinstance(value, float):
+            return None if (math.isnan(value) or math.isinf(value)) else value
+        if isinstance(value, (np.integer,)):
+            return int(value)
+        if isinstance(value, (np.floating,)):
+            parsed = float(value)
+            return None if (math.isnan(parsed) or math.isinf(parsed)) else parsed
+        if isinstance(value, (np.bool_,)):
+            return bool(value)
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, dict):
+            return {str(key): _sanitize_json_value(val) for key, val in value.items()}
+        if isinstance(value, list | tuple):
+            return [_sanitize_json_value(item) for item in value]
+        return value
+
+    def _load_visualization_tracks(run_path: Path) -> list[dict[str, Any]]:
+        """Load tracks.parquet as JSON-safe records for visualization renderers."""
+        import pandas as pd
+
+        tracks_path = run_path / "tracks.parquet"
+        if not tracks_path.exists():
+            raise HTTPException(status_code=404, detail="Tracks not found")
+
+        records = pd.read_parquet(tracks_path).to_dict(orient="records")
+        return [
+            {key: _sanitize_json_value(value) for key, value in row.items()}
+            for row in records
+        ]
+
+    def _load_visualization_events(run_path: Path) -> list[dict[str, Any]]:
+        """Load events.jsonl rows for visualization renderers."""
+        events_path = run_path / "events.jsonl"
+        if not events_path.exists():
+            return []
+
+        events: list[dict[str, Any]] = []
+        with open(events_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                payload = json.loads(line)
+                if isinstance(payload, dict):
+                    events.append(payload)
+        return events
+
+    def _resolve_visualization_team_colors(run_path: Path) -> dict[str, Any]:
+        """Resolve team colors from teams.json when available."""
+        teams_path = run_path / "teams.json"
+        if not teams_path.exists():
+            return {}
+
+        with open(teams_path) as f:
+            payload = json.load(f)
+        if not isinstance(payload, dict):
+            return {}
+
+        colors: dict[str, Any] = {}
+        color_map = payload.get("team_colors")
+        if isinstance(color_map, dict):
+            for team_id, color_value in color_map.items():
+                colors[str(team_id)] = color_value
+
+        for team_id in ("ours", "opponent"):
+            row = payload.get(team_id)
+            if not isinstance(row, dict):
+                continue
+            for key in ("primary_color", "color_hex", "color", "primary"):
+                value = row.get(key)
+                if isinstance(value, str) and value.strip():
+                    colors[team_id] = value
+                    break
+
+        return colors
+
+    def _build_visualization_context(
+        run_path: Path,
+        *,
+        canvas_width: int | None,
+        canvas_height: int | None,
+        canvas_padding: int | None,
+    ) -> dict[str, Any]:
+        """Build renderer context from run metadata and query overrides."""
+        context: dict[str, Any] = {}
+
+        video_metadata_path = run_path / "video_metadata.json"
+        if video_metadata_path.exists():
+            with open(video_metadata_path) as f:
+                metadata = json.load(f)
+            if isinstance(metadata, dict):
+                width = metadata.get("width")
+                height = metadata.get("height")
+                fps = metadata.get("fps")
+                if width is not None:
+                    context["frame_width"] = width
+                if height is not None:
+                    context["frame_height"] = height
+                if fps is not None:
+                    context["fps"] = fps
+
+        team_colors = _resolve_visualization_team_colors(run_path)
+        if team_colors:
+            context["team_colors"] = team_colors
+
+        if canvas_width is not None:
+            context["canvas_width"] = int(canvas_width)
+        if canvas_height is not None:
+            context["canvas_height"] = int(canvas_height)
+        if canvas_padding is not None:
+            context["canvas_padding"] = int(canvas_padding)
+
+        return context
+
+    @app.get("/api/runs/{run_name}/visualizations/pass_map")
+    async def get_run_pass_map(
+        run_name: str,
+        team_id: str | None = None,
+        player_id: int | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        min_confidence: float = 0.0,
+        min_pass_count: int = 1,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Render a pass-map artifact from run tracks/events."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.pass_map import PassMapRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        events = _load_visualization_events(run_path)
+        context = _build_visualization_context(
+            run_path,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_padding=canvas_padding,
+        )
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            start_t=start_t,
+            end_t=end_t,
+            extra={
+                "min_confidence": float(min_confidence),
+                "min_pass_count": int(min_pass_count),
+            },
+        )
+
+        artifact = PassMapRenderer(include_markings=include_markings).render(
+            tracks=tracks,
+            events=events,
+            query=query,
+            context=context,
+        )
+        return artifact.to_dict()
+
+    @app.get("/api/runs/{run_name}/visualizations/tactical_map")
+    async def get_run_tactical_map(
+        run_name: str,
+        team_id: str | None = None,
+        player_id: int | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        min_confidence: float = 0.0,
+        include_points: bool = False,
+        max_tracks_per_team: int = 11,
+        min_samples_per_track: int = 3,
+        include_territory: bool = True,
+        include_pressing: bool = True,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Render a tactical-map artifact from run tracks and team analytics."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.tactical_map import TacticalMapRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        context = _build_visualization_context(
+            run_path,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_padding=canvas_padding,
+        )
+
+        team_analytics_path = run_path / "team_analytics.json"
+        if team_analytics_path.exists():
+            with open(team_analytics_path) as f:
+                team_analytics = json.load(f)
+            if isinstance(team_analytics, dict):
+                context["team_analytics"] = team_analytics
+
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            start_t=start_t,
+            end_t=end_t,
+            extra={
+                "min_confidence": float(min_confidence),
+                "include_points": bool(include_points),
+                "max_tracks_per_team": int(max_tracks_per_team),
+                "min_samples_per_track": int(min_samples_per_track),
+                "include_territory": bool(include_territory),
+                "include_pressing": bool(include_pressing),
+            },
+        )
+
+        artifact = TacticalMapRenderer(include_markings=include_markings).render(
+            tracks=tracks,
+            query=query,
+            context=context,
+        )
+        return artifact.to_dict()
+
     @app.get("/api/runs/{run_name}/events")
     async def get_run_events(run_name: str):
         """Get all events for a specific run, merged with user confirmations."""

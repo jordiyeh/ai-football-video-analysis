@@ -42,6 +42,15 @@ let lastHighlightedEventIdx = -1;
 let teamAnalyticsData = null;
 let matchStatsData = null;
 let runSummaryData = null;
+let visualizationData = null;
+let visualizationError = '';
+let visualizationState = {
+    type: 'pass_map',
+    teamId: '',
+    playerId: '',
+    minConfidence: 0.0,
+    includePoints: false
+};
 let eventPage = 0;
 let assignmentPage = 0;
 let suggestionPage = 0;
@@ -91,6 +100,12 @@ const seasonSummaryGrid = document.getElementById('seasonSummaryGrid');
 const seasonTeamTrends = document.getElementById('seasonTeamTrends');
 const seasonTopPlayers = document.getElementById('seasonTopPlayers');
 const seasonRecentWindow = document.getElementById('seasonRecentWindow');
+const visualizationTypeSelect = document.getElementById('visualizationType');
+const visualizationTeamFilter = document.getElementById('visualizationTeamFilter');
+const visualizationPlayerFilter = document.getElementById('visualizationPlayerFilter');
+const visualizationMinConfidence = document.getElementById('visualizationMinConfidence');
+const visualizationIncludePoints = document.getElementById('visualizationIncludePoints');
+const visualizationContent = document.getElementById('visualizationContent');
 const crossMatchIncludeTemplates = document.getElementById('crossMatchIncludeTemplates');
 const clipModal = document.getElementById('clipModal');
 const clipModalTitle = document.getElementById('clipModalTitle');
@@ -814,6 +829,8 @@ async function loadRun(runName, sourceElement = null) {
     teamAnalyticsData = null;
     matchStatsData = null;
     runSummaryData = null;
+    visualizationData = null;
+    visualizationError = '';
     assignmentFilterTerm = '';
     selectedAssignmentTrackIds.clear();
     selectedSuggestionTrackIds.clear();
@@ -834,6 +851,7 @@ async function loadRun(runName, sourceElement = null) {
     renderTeamAnalytics();
     renderMatchStats();
     renderRunSummary();
+    renderVisualizationPanel();
 
     // Update UI
     document.querySelectorAll('.run-item').forEach(item => item.classList.remove('active'));
@@ -871,6 +889,10 @@ async function loadRun(runName, sourceElement = null) {
 
         // Load match stats
         await loadMatchStats(runName);
+        if (thisGeneration !== loadRunGeneration) return;
+
+        // Load tactical/pass visualization artifact
+        await loadVisualization(runName);
         if (thisGeneration !== loadRunGeneration) return;
 
         // Load run-team mapping bar
@@ -3223,6 +3245,140 @@ function renderTeamAnalytics() {
 
     if (!html) html = '<p class="loading">No analytics content to display</p>';
     container.innerHTML = html;
+}
+
+function _optionalNumber(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function _buildVisualizationFilters() {
+    const filters = {
+        type: visualizationTypeSelect ? visualizationTypeSelect.value : visualizationState.type,
+        teamId: visualizationTeamFilter ? String(visualizationTeamFilter.value || '').trim() : '',
+        playerId: visualizationPlayerFilter ? _optionalNumber(visualizationPlayerFilter.value) : null,
+        minConfidence: visualizationMinConfidence ? _optionalNumber(visualizationMinConfidence.value) : 0.0,
+        includePoints: visualizationIncludePoints ? Boolean(visualizationIncludePoints.checked) : false
+    };
+
+    if (!filters.type) {
+        filters.type = 'pass_map';
+    }
+    if (!Number.isFinite(filters.minConfidence)) {
+        filters.minConfidence = 0.0;
+    }
+    return filters;
+}
+
+function _formatVisualizationTeamLabel(teamId) {
+    if (!teamId) return 'Unknown';
+    if (teamId === 'ours') return 'Ours';
+    if (teamId === 'opponent') return 'Opponent';
+    if (teamId === 'unknown') return 'Unknown';
+    return String(teamId).replace(/_/g, ' ');
+}
+
+function renderVisualizationPanel() {
+    if (!visualizationContent) return;
+
+    if (!currentRun) {
+        visualizationContent.innerHTML = '<p class="loading">Select a run to load visualization maps</p>';
+        return;
+    }
+
+    if (!visualizationData) {
+        const message = visualizationError || 'No visualization map available for this run';
+        visualizationContent.innerHTML = `<p class="loading">${escapeHtml(message)}</p>`;
+        return;
+    }
+
+    const payload = visualizationData.payload || {};
+    const metadata = visualizationData.metadata || {};
+    const totals = payload.totals || {};
+    const encoded = payload.image_png_base64 || '';
+    const imageTag = encoded
+        ? `<img class="visualization-image" src="data:image/png;base64,${encoded}" alt="${escapeHtml(visualizationData.title || 'Visualization map')}">`
+        : '<p class="loading">Visualization image unavailable</p>';
+
+    const type = String(visualizationData.visualization_type || visualizationState.type || 'pass_map');
+    const summaryItems = [];
+    if (type === 'pass_map') {
+        summaryItems.push(`Passes: ${Number(totals.passes || 0)}`);
+        summaryItems.push(`Edges: ${Number(totals.edges || 0)}`);
+        summaryItems.push(`Nodes: ${Number(totals.nodes || 0)}`);
+    } else {
+        summaryItems.push(`Samples: ${Number(totals.samples || 0)}`);
+        summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
+        summaryItems.push(`Tracks: ${Number(totals.tracks || 0)}`);
+    }
+
+    const teams = Array.isArray(metadata.teams) ? metadata.teams : [];
+    const teamPills = teams.length > 0
+        ? teams.map((team) => `<span class="viz-pill">${escapeHtml(_formatVisualizationTeamLabel(team))}</span>`).join('')
+        : '<span class="viz-pill">No team labels</span>';
+
+    visualizationContent.innerHTML = `
+        <div class="visualization-meta">
+            <div class="visualization-summary">${summaryItems.map((item) => `<span class="viz-pill">${escapeHtml(item)}</span>`).join('')}</div>
+            <div class="visualization-summary">${teamPills}</div>
+        </div>
+        <div class="visualization-image-wrap">
+            ${imageTag}
+        </div>
+    `;
+}
+
+async function loadVisualization(runName) {
+    if (!runName || !visualizationContent) return;
+
+    const filters = _buildVisualizationFilters();
+    visualizationState = {
+        ...visualizationState,
+        ...filters
+    };
+
+    const endpointType = filters.type === 'tactical_map' ? 'tactical_map' : 'pass_map';
+    const params = new URLSearchParams();
+    if (filters.teamId) params.set('team_id', filters.teamId);
+    if (filters.playerId != null) params.set('player_id', String(Math.round(filters.playerId)));
+    if (filters.minConfidence != null) params.set('min_confidence', String(Math.max(0, Math.min(1, filters.minConfidence))));
+    params.set('canvas_width', '900');
+    params.set('canvas_height', '560');
+
+    if (endpointType === 'tactical_map') {
+        params.set('include_points', filters.includePoints ? 'true' : 'false');
+    }
+
+    visualizationError = '';
+    visualizationData = null;
+    visualizationContent.innerHTML = '<p class="loading">Loading visualization map...</p>';
+
+    try {
+        const response = await fetchWithRetry(`/api/runs/${runName}/visualizations/${endpointType}?${params.toString()}`);
+        if (response.status === 404) {
+            visualizationError = 'Visualization not available for this run';
+            visualizationData = null;
+            renderVisualizationPanel();
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        visualizationData = await response.json();
+        visualizationError = '';
+        renderVisualizationPanel();
+    } catch (error) {
+        console.error('Error loading visualization map:', error);
+        visualizationData = null;
+        visualizationError = `Failed loading map: ${error.message}`;
+        renderVisualizationPanel();
+    }
+}
+
+function onVisualizationControlsChanged() {
+    if (!currentRun) return;
+    loadVisualization(currentRun);
 }
 
 // Load tracks for overlay rendering (progressive loading in windows)
