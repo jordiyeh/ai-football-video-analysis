@@ -1,23 +1,110 @@
 """Event detection for shots, goals, and other match events."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
 from src.events.ball_trajectory import BallTrajectory
+from src.vision.field.goal_detector import (
+    GoalRegionProvider,
+    HeuristicGoalRegionProvider,
+)
+
+if TYPE_CHECKING:
+    from src.config.schemas import AlternativeShotDetectionConfig
+
+
+EventType = Literal[
+    "shot",
+    "goal",
+    "pass",
+    "set_piece",
+    "kickoff",
+    "throw_in",
+    "corner_kick",
+    "free_kick",
+    "goal_kick",
+    "tackle",
+    "other",
+]
+
+EventFamily = Literal["shot", "goal", "pass", "set_piece", "defensive", "other"]
+
+# Schema for per-event metadata payload, including pass/set-piece families.
+EVENT_METADATA_SCHEMA_VERSION = "1.0"
+
+SET_PIECE_EVENT_TYPES = frozenset(
+    {"set_piece", "kickoff", "throw_in", "corner_kick", "free_kick", "goal_kick"}
+)
+
+EVENT_TYPE_TO_FAMILY: dict[str, EventFamily] = {
+    "shot": "shot",
+    "goal": "goal",
+    "pass": "pass",
+    "set_piece": "set_piece",
+    "kickoff": "set_piece",
+    "throw_in": "set_piece",
+    "corner_kick": "set_piece",
+    "free_kick": "set_piece",
+    "goal_kick": "set_piece",
+    "tackle": "defensive",
+    "other": "other",
+}
+
+
+def infer_event_family(event_type: EventType | str) -> EventFamily:
+    """Map an event type to its event family."""
+    return EVENT_TYPE_TO_FAMILY.get(event_type, "other")
+
+
+def normalize_event_metadata(
+    event_type: EventType | str,
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Normalize metadata into schema-versioned structure.
+
+    Pass and set-piece events use this canonical payload so downstream
+    detectors can add fields without breaking consumers.
+    """
+    normalized: dict[str, Any] = dict(metadata or {})
+    event_family = infer_event_family(event_type)
+
+    normalized.setdefault("schema_version", EVENT_METADATA_SCHEMA_VERSION)
+    normalized.setdefault("event_family", event_family)
+    normalized.setdefault("event_type", event_type)
+
+    if event_family == "set_piece":
+        set_piece_type = normalized.get("set_piece_type")
+        if event_type != "set_piece" and not set_piece_type:
+            set_piece_type = event_type
+        if set_piece_type:
+            normalized["set_piece_type"] = str(set_piece_type)
+
+    return normalized
 
 
 @dataclass
 class Event:
     """Single match event."""
 
-    event_type: Literal["shot", "goal", "pass", "tackle", "other"]
+    event_type: EventType
     frame_idx: int
     timestamp: float
     confidence: float
     location: tuple[float, float] | None = None  # (x, y) in pixels
-    metadata: dict | None = None  # Event-specific data
+    metadata: dict[str, Any] | None = None  # Event-specific data
+
+    @property
+    def event_family(self) -> EventFamily:
+        """Return event family derived from event type."""
+        return infer_event_family(self.event_type)
+
+    def __post_init__(self) -> None:
+        """Ensure pass/set-piece events carry schema-versioned metadata."""
+        if self.event_family in {"pass", "set_piece"}:
+            self.metadata = normalize_event_metadata(self.event_type, self.metadata)
 
 
 class EventDetector:
@@ -30,6 +117,8 @@ class EventDetector:
         shot_velocity_threshold: float = 15.0,
         goal_confidence_threshold: float = 0.6,
         fps: float = 30.0,
+        alternative_config: "AlternativeShotDetectionConfig | None" = None,
+        goal_region_provider: GoalRegionProvider | None = None,
     ):
         """
         Initialize event detector.
@@ -40,75 +129,89 @@ class EventDetector:
             shot_velocity_threshold: Minimum ball speed for shot (pixels/frame)
             goal_confidence_threshold: Minimum confidence for goal detection
             fps: Video frames per second
+            alternative_config: Config for alternative shot detection (sparse ball data)
+            goal_region_provider: Optional provider for goal regions (defaults to heuristic)
         """
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.shot_velocity_threshold = shot_velocity_threshold
         self.goal_confidence_threshold = goal_confidence_threshold
         self.fps = fps
+        self.alternative_config = alternative_config
 
-        # Goal regions (estimated as edges of frame where goals typically are)
-        # This is simplified - in practice would use field detection
-        self.goal_regions = self._estimate_goal_regions()
+        # Goal region provider (use heuristic fallback if not provided)
+        if goal_region_provider is not None:
+            self._goal_region_provider = goal_region_provider
+        else:
+            self._goal_region_provider = HeuristicGoalRegionProvider(
+                frame_width, frame_height
+            )
+
+        # Legacy compatibility: expose goal_regions as list of dicts
+        self.goal_regions = self._get_goal_regions_as_dicts()
+
+        # Initialize alternative detection components if enabled
+        self._kick_detector = None
+        self._goal_entry_detector = None
+        self._clustering_analyzer = None
+        self._gk_analyzer = None
+        self._fusion_engine = None
+        self._celebration_detector = None
+
+        if alternative_config and alternative_config.enabled:
+            self._init_alternative_detectors()
+
+    def _get_goal_regions_as_dicts(self, frame_idx: int = 0) -> list[dict]:
+        """
+        Get goal regions as list of dicts for legacy compatibility.
+
+        Args:
+            frame_idx: Frame index (defaults to 0 for static heuristic)
+
+        Returns:
+            List of region dicts with 'name' and 'bounds' keys
+        """
+        regions = self._goal_region_provider.get_goal_regions(frame_idx)
+        return [
+            {"name": r.name, "bounds": dict(r.bounds)}
+            for r in regions
+        ]
 
     def _estimate_goal_regions(self) -> list[dict]:
         """
         Estimate goal regions in pixel space.
 
-        For now, assumes goals are near top and bottom edges (typical broadcast view).
-        Returns list of region dicts with bounds.
+        DEPRECATED: Use _goal_region_provider instead.
+        Kept for backward compatibility.
         """
-        edge_margin = 0.15  # 15% from edge
-        goal_width_fraction = 0.3  # Goals span central 30% of frame width
+        return self._get_goal_regions_as_dicts()
 
-        x_center = self.frame_width / 2
-        goal_half_width = (self.frame_width * goal_width_fraction) / 2
-
-        # Top goal region
-        top_goal = {
-            "name": "top",
-            "bounds": {
-                "x_min": x_center - goal_half_width,
-                "x_max": x_center + goal_half_width,
-                "y_min": 0,
-                "y_max": self.frame_height * edge_margin,
-            },
-        }
-
-        # Bottom goal region
-        bottom_goal = {
-            "name": "bottom",
-            "bounds": {
-                "x_min": x_center - goal_half_width,
-                "x_max": x_center + goal_half_width,
-                "y_min": self.frame_height * (1 - edge_margin),
-                "y_max": self.frame_height,
-            },
-        }
-
-        return [top_goal, bottom_goal]
-
-    def is_in_goal_region(self, position: tuple[float, float]) -> tuple[bool, str | None]:
+    def is_in_goal_region(
+        self, position: tuple[float, float], frame_idx: int = 0
+    ) -> tuple[bool, str | None]:
         """
         Check if position is in a goal region.
 
         Args:
             position: (x, y) position
+            frame_idx: Frame index (for dynamic goal detection)
 
         Returns:
             (is_in_goal, goal_name)
         """
-        x, y = position
+        return self._goal_region_provider.is_in_goal_region(position, frame_idx)
 
-        for goal in self.goal_regions:
-            bounds = goal["bounds"]
-            if (
-                bounds["x_min"] <= x <= bounds["x_max"]
-                and bounds["y_min"] <= y <= bounds["y_max"]
-            ):
-                return True, goal["name"]
+    def get_goal_regions(self, frame_idx: int = 0) -> list[dict]:
+        """
+        Get goal regions for a specific frame.
 
-        return False, None
+        Args:
+            frame_idx: Frame index
+
+        Returns:
+            List of region dicts with 'name' and 'bounds' keys
+        """
+        return self._get_goal_regions_as_dicts(frame_idx)
 
     def detect_shots(self, ball_trajectory: BallTrajectory) -> list[Event]:
         """
@@ -139,7 +242,6 @@ class EventDetector:
             end_point = ball_trajectory.points[min(end_idx + 5, len(ball_trajectory.points) - 1)]
 
             # Direction vector
-            dx = end_point.position[0] - start_point.position[0]
             dy = end_point.position[1] - start_point.position[1]
 
             # Check if moving towards goal regions
@@ -147,9 +249,6 @@ class EventDetector:
             target_goal = None
 
             for goal in self.goal_regions:
-                bounds = goal["bounds"]
-                goal_center_y = (bounds["y_min"] + bounds["y_max"]) / 2
-
                 # Check if movement is towards this goal
                 if goal["name"] == "top" and dy < -5:  # Moving up
                     is_towards_goal = True
@@ -230,7 +329,7 @@ class EventDetector:
 
         # Track when ball enters goal regions
         for i, point in enumerate(ball_trajectory.points):
-            in_goal, goal_name = self.is_in_goal_region(point.position)
+            in_goal, goal_name = self.is_in_goal_region(point.position, point.frame_idx)
 
             if not in_goal:
                 continue
@@ -295,7 +394,7 @@ class EventDetector:
         in_goal_count = 0
         for i in range(start_idx, min(start_idx + duration_frames, len(ball_trajectory.points))):
             point = ball_trajectory.points[i]
-            in_goal, _ = self.is_in_goal_region(point.position)
+            in_goal, _ = self.is_in_goal_region(point.position, point.frame_idx)
 
             # Also count as "in goal" if near goal (within 10% of frame height)
             if not in_goal:
@@ -341,3 +440,296 @@ class EventDetector:
             i = j
 
         return deduplicated
+
+    def _init_alternative_detectors(self) -> None:
+        """Initialize alternative detection components."""
+        from src.events.kick_detection import (
+            GoalAreaEntryDetector,
+            KickEventDetector,
+            ShotFusionEngine,
+        )
+        from src.events.player_analysis import GoalkeeperAnalyzer, PlayerClusteringAnalyzer
+
+        self._kick_detector = KickEventDetector(self.alternative_config)
+        self._goal_entry_detector = GoalAreaEntryDetector(
+            self.frame_width,
+            self.frame_height,
+            self.alternative_config,
+            goal_region_provider=self._goal_region_provider,
+        )
+        self._clustering_analyzer = PlayerClusteringAnalyzer(
+            self.frame_width, self.frame_height, self.alternative_config
+        )
+        self._gk_analyzer = GoalkeeperAnalyzer(
+            self.frame_width,
+            self.frame_height,
+            self.alternative_config,
+            goal_region_provider=self._goal_region_provider,
+        )
+        self._fusion_engine = ShotFusionEngine(self.alternative_config, self.fps)
+
+        # Initialize celebration detector if enabled
+        if (
+            hasattr(self.alternative_config, 'celebration')
+            and self.alternative_config.celebration.enabled
+        ):
+            from src.events.celebration_detection import CelebrationDetector
+            self._celebration_detector = CelebrationDetector(
+                self.frame_width,
+                self.frame_height,
+                self.alternative_config.celebration,
+            )
+
+    def _compute_ball_coverage(
+        self,
+        ball_tracks: list[dict],
+        total_frames: int | None = None,
+    ) -> float:
+        """
+        Compute ball detection coverage as fraction of frames with ball.
+
+        Args:
+            ball_tracks: List of ball track dicts
+            total_frames: Total frames in video (if known)
+
+        Returns:
+            Coverage ratio (0.0 to 1.0)
+        """
+        if not ball_tracks:
+            return 0.0
+
+        # Get unique frames with ball detections
+        ball_frames = set(t["frame_idx"] for t in ball_tracks)
+
+        if total_frames:
+            return len(ball_frames) / total_frames
+
+        # Estimate from min/max frame
+        min_frame = min(ball_frames)
+        max_frame = max(ball_frames)
+        frame_span = max_frame - min_frame + 1
+
+        if frame_span <= 0:
+            return 0.0
+
+        return len(ball_frames) / frame_span
+
+    def detect_shots_all(
+        self,
+        ball_trajectory: BallTrajectory,
+        player_tracks: list[dict],
+        ball_tracks: list[dict],
+        total_frames: int | None = None,
+    ) -> list[Event]:
+        """
+        Combined velocity-based and alternative shot detection.
+
+        Uses velocity-based detection when ball coverage is good,
+        falls back to alternative detection when ball data is sparse.
+
+        Args:
+            ball_trajectory: Computed ball trajectory
+            player_tracks: List of player track dicts
+            ball_tracks: List of ball track dicts
+            total_frames: Total frames in video (optional)
+
+        Returns:
+            List of shot events
+        """
+        # 1. Try velocity-based detection (existing method)
+        velocity_shots = self.detect_shots(ball_trajectory)
+
+        # 2. Try alternative detection if enabled and ball data is sparse
+        alternative_shots = []
+        if self.alternative_config and self.alternative_config.enabled:
+            coverage = self._compute_ball_coverage(ball_tracks, total_frames)
+
+            if coverage < self.alternative_config.ball_coverage_threshold:
+                alternative_shots = self.detect_shots_alternative(
+                    player_tracks, ball_tracks
+                )
+
+        # 3. Merge and deduplicate
+        return self._merge_shot_detections(velocity_shots, alternative_shots)
+
+    def detect_shots_alternative(
+        self,
+        player_tracks: list[dict],
+        ball_tracks: list[dict],
+    ) -> list[Event]:
+        """
+        Detect shots using player behavior signals when ball data is sparse.
+
+        Uses multiple signals:
+        - Kick events (ball near player foot)
+        - Goal area entries
+        - Goalkeeper dives
+        - Attacking formations
+        - Celebrations (for goal confirmation)
+
+        Args:
+            player_tracks: List of player track dicts
+            ball_tracks: List of ball track dicts
+
+        Returns:
+            List of shot events detected via alternative method
+        """
+        if not self._kick_detector:
+            return []
+
+        # 1. Detect kick events
+        kick_events = self._kick_detector.detect_kicks(
+            player_tracks, ball_tracks, self.frame_width, self.frame_height
+        )
+
+        # 2. Detect goal area entries
+        goal_entries = self._goal_entry_detector.detect_goal_entries(
+            ball_tracks, kick_events, self.fps
+        )
+
+        # 3. Analyze player clustering for attack windows
+        clustering_states = self._clustering_analyzer.analyze_clustering(player_tracks)
+        attack_windows = self._clustering_analyzer.detect_attack_windows(clustering_states)
+
+        # 4. Detect goalkeeper dives
+        gk_dives = self._gk_analyzer.detect_goalkeeper_dives(player_tracks, self.fps)
+        gk_dive_frames = [d.frame_idx for d in gk_dives]
+
+        # 5. First pass fusion to get initial shot candidates (for celebration detection)
+        initial_candidates = self._fusion_engine.fuse_signals(
+            kick_events, goal_entries, gk_dive_frames, attack_windows
+        )
+
+        # 6. Detect celebrations after initial shot candidates
+        celebration_events = []
+        if self._celebration_detector and initial_candidates:
+            celebration_events = self._celebration_detector.detect_celebrations(
+                player_tracks, initial_candidates, self.fps
+            )
+
+        # 7. Final fusion with celebration events
+        shot_candidates = self._fusion_engine.fuse_signals(
+            kick_events, goal_entries, gk_dive_frames, attack_windows,
+            celebration_events=celebration_events if celebration_events else None,
+        )
+
+        # 8. Convert candidates to Event objects
+        events = []
+        ball_coverage = self._compute_ball_coverage(ball_tracks)
+
+        for candidate in shot_candidates:
+            # Apply sparse data penalty
+            confidence = candidate.confidence
+            if ball_coverage < 0.1:
+                confidence *= 0.7  # 30% penalty for very sparse data
+
+            # Build metadata
+            metadata = {
+                "detection_method": "alternative",
+                "signals_present": candidate.signals_present,
+                "attack_score": candidate.attack_score,
+                "ball_coverage": ball_coverage,
+            }
+
+            if candidate.kick_event:
+                metadata["kick_player_id"] = candidate.kick_event.player_track_id
+                metadata["kick_confidence"] = candidate.kick_event.confidence
+
+            if candidate.goal_entry:
+                metadata["target_goal"] = candidate.goal_entry.goal_region
+                metadata["goal_entry_confidence"] = candidate.goal_entry.confidence
+
+            if candidate.gk_dive_frame:
+                metadata["gk_dive_frame"] = candidate.gk_dive_frame
+
+            if candidate.celebration_event:
+                metadata["celebration_type"] = candidate.celebration_event.celebration_type
+                metadata["celebration_confidence"] = candidate.celebration_event.confidence
+                metadata["celebration_players"] = candidate.celebration_event.participating_track_ids
+
+            # Get location from kick or goal entry
+            location = None
+            if candidate.kick_event:
+                location = candidate.kick_event.ball_position
+            elif candidate.goal_entry:
+                location = candidate.goal_entry.entry_position
+
+            event = Event(
+                event_type="shot",
+                frame_idx=candidate.frame_idx,
+                timestamp=candidate.timestamp,
+                confidence=confidence,
+                location=location,
+                metadata=metadata,
+            )
+            events.append(event)
+
+        return events
+
+    def _merge_shot_detections(
+        self,
+        velocity_shots: list[Event],
+        alternative_shots: list[Event],
+        time_window: float = 3.0,
+    ) -> list[Event]:
+        """
+        Merge velocity-based and alternative shot detections.
+
+        Removes duplicates, preferring velocity-based when both detect same shot.
+
+        Args:
+            velocity_shots: Shots from velocity-based detection
+            alternative_shots: Shots from alternative detection
+            time_window: Time window (seconds) to consider events as duplicates
+
+        Returns:
+            Merged and deduplicated shot events
+        """
+        if not velocity_shots:
+            return alternative_shots
+        if not alternative_shots:
+            return velocity_shots
+
+        # Combine all shots
+        all_shots = velocity_shots + alternative_shots
+        all_shots.sort(key=lambda e: e.timestamp)
+
+        merged = []
+        used_indices: set[int] = set()
+
+        for i, shot in enumerate(all_shots):
+            if i in used_indices:
+                continue
+
+            # Find overlapping shots
+            best_shot = shot
+            for j in range(i + 1, len(all_shots)):
+                if j in used_indices:
+                    continue
+
+                other = all_shots[j]
+                if other.timestamp - shot.timestamp > time_window:
+                    break
+
+                # Prefer velocity-based detection (more reliable when available)
+                shot_method = shot.metadata.get("detection_method", "velocity") if shot.metadata else "velocity"
+                other_method = other.metadata.get("detection_method", "velocity") if other.metadata else "velocity"
+
+                if shot_method == "velocity" and other_method == "alternative":
+                    # Keep velocity-based, mark alternative as used
+                    used_indices.add(j)
+                elif shot_method == "alternative" and other_method == "velocity":
+                    # Switch to velocity-based
+                    best_shot = other
+                    used_indices.add(i)
+                    used_indices.add(j)
+                else:
+                    # Same method, keep higher confidence
+                    if other.confidence > best_shot.confidence:
+                        best_shot = other
+                    used_indices.add(j)
+
+            used_indices.add(i)
+            merged.append(best_shot)
+
+        return merged

@@ -13,7 +13,7 @@
 
 ### Phase 1: Event Detection Parity
 
-- [ ] [HIGH] Step 02 — Event schema extension: Extend event typing in `src/events/detection.py` to support pass and set-piece event families with schema-versioned metadata. Test: `pytest tests/unit/test_event_detection.py -q`
+- [x] [HIGH] Step 02 — Event schema extension: Extend event typing in `src/events/detection.py` to support pass and set-piece event families with schema-versioned metadata. Test: `pytest tests/unit/test_event_detection.py -q`
 - [ ] [HIGH] Step 03 — Pass detection module: Create `src/events/passes.py` with deterministic pass inference from possession handoff, including confidence and provenance fields. Test: `pytest tests/unit/test_event_detection.py -q`
 - [ ] [HIGH] Step 04 — Set-piece detection module: Create `src/events/set_pieces.py` for kickoff, throw-in, corner, free kick, goal kick heuristics with configurable confidence thresholds. Test: `pytest tests/unit -q -k "set_piece or corner or throw or free_kick or goal_kick or kickoff"`
 - [ ] [HIGH] Step 05 — Integrate pass + set-pieces into pipeline: Wire new detectors into event stage in `src/cli.py`, ensure `events.jsonl` and `summary.json` include new counts. Test: `pytest tests/integration/test_event_pipeline.py -q`
