@@ -18,6 +18,15 @@ from src.pipeline.metrics import (
     detect_device,
     format_duration,
 )
+from src.pipeline.contracts import (
+    ARTIFACT_SCHEMA_VERSIONS,
+    RUN_MANIFEST_SCHEMA_VERSION,
+    SUMMARY_SCHEMA_VERSION,
+    UI_INDEX_SCHEMA_VERSION,
+    collect_git_metadata,
+    collect_runtime_environment,
+    validate_run_artifact_contract,
+)
 
 
 class PipelineCancelledError(Exception):
@@ -231,6 +240,14 @@ class Pipeline:
         self._save_summary(context, output_dir, summary_path)
         ui_index_path = output_dir / "ui_index.json"
         self._save_ui_index(context, output_dir, ui_index_path)
+        validate_run_artifact_contract(
+            output_dir=output_dir,
+            stage_names=[stage.name for stage in self.stages],
+            save_detections=bool(self.config.export.save_detections),
+            save_tracks=bool(self.config.export.save_tracks),
+            save_events=bool(self.config.export.save_events),
+            save_overlay_video=bool(self.config.export.save_overlay_video),
+        )
 
         self.console.print(f"\n[bold green]Pipeline complete! Output: {output_dir}[/bold green]\n")
 
@@ -245,15 +262,19 @@ class Pipeline:
             path: Output path
         """
         manifest = {
-            "schema_version": "1.1",
+            "schema_version": RUN_MANIFEST_SCHEMA_VERSION,
             "video_path": context["video_path"],
             "original_video_path": context.get("original_video_path", context["video_path"]),
             "output_dir": context["output_dir"],
             "start_time": context["start_time"],
             "end_time": context["end_time"],
+            "resume": bool(context.get("resume", False)),
             "config": self.config.model_dump(),
             "stages": [stage.name for stage in self.stages],
             "metrics": self.metrics.to_dict(),
+            "artifact_schemas": ARTIFACT_SCHEMA_VERSIONS,
+            "git": collect_git_metadata(cwd=Path.cwd()),
+            "environment": collect_runtime_environment(device=self.metrics.device),
         }
 
         with open(path, "w") as f:
@@ -420,7 +441,7 @@ class Pipeline:
         artifacts["ui_index"] = "ui_index.json"
 
         summary_data = {
-            "schema_version": "1.0",
+            "schema_version": SUMMARY_SCHEMA_VERSION,
             "generated_at": datetime.now().isoformat(),
             "run_name": output_dir.name,
             "video_id": Path(str(context.get("video_path", output_dir.name))).stem,
@@ -518,7 +539,7 @@ class Pipeline:
         counts = summary.get("counts", {})
 
         ui_index = {
-            "schema_version": "1.0",
+            "schema_version": UI_INDEX_SCHEMA_VERSION,
             "generated_at": datetime.now().isoformat(),
             "run_name": output_dir.name,
             "video_id": Path(str(context.get("video_path", output_dir.name))).stem,
@@ -569,6 +590,7 @@ class Pipeline:
 def save_detections_to_parquet(
     detections: list[dict[str, Any]],
     output_path: Path,
+    schema_version: str | None = None,
 ) -> None:
     """
     Save detections to Parquet file.
@@ -577,13 +599,30 @@ def save_detections_to_parquet(
         detections: List of detection dictionaries
         output_path: Output file path
     """
-    df = pd.DataFrame(detections)
+    rows: list[dict[str, Any]]
+    if schema_version is None:
+        rows = detections
+    else:
+        rows = []
+        for detection in detections:
+            row = dict(detection)
+            row["schema_version"] = schema_version
+            rows.append(row)
+
+    if rows:
+        df = pd.DataFrame(rows)
+    elif schema_version is None:
+        df = pd.DataFrame(rows)
+    else:
+        # Keep schema_version column even for empty exports.
+        df = pd.DataFrame(columns=["schema_version"])
     df.to_parquet(output_path, index=False)
 
 
 def save_detections_to_jsonl(
     detections: list[dict[str, Any]],
     output_path: Path,
+    schema_version: str | None = None,
 ) -> None:
     """
     Save detections to JSONL file.
@@ -594,4 +633,7 @@ def save_detections_to_jsonl(
     """
     with open(output_path, "w") as f:
         for detection in detections:
-            f.write(json.dumps(detection) + "\n")
+            row = dict(detection)
+            if schema_version is not None:
+                row["schema_version"] = schema_version
+            f.write(json.dumps(row) + "\n")

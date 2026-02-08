@@ -14,6 +14,15 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRe
 from src.config.schemas import PipelineConfig
 from src.export.overlay import OverlayRenderer, VideoWriter
 from src.pipeline.base import Pipeline, PipelineCancelledError, PipelineStage, save_detections_to_parquet
+from src.pipeline.contracts import (
+    DETECTIONS_SCHEMA_VERSION,
+    EVENTS_SCHEMA_VERSION,
+    SCORE_TIMELINE_SCHEMA_VERSION,
+    TRACKS_SCHEMA_VERSION,
+    has_json_schema_version,
+    has_jsonl_schema_version,
+    has_tabular_schema_version,
+)
 from src.video.reader import VideoReader
 from src.vision.detect.base import ObjectDetector
 from src.vision.detect.yolo import YOLODetector
@@ -148,31 +157,35 @@ class DetectionStage(PipelineStage):
                 cache_path = output_dir / "detections.jsonl"
 
             if cache_path.exists():
-                self.console.print(f"[bold yellow]✓ Using cached detections from {cache_path.name}[/bold yellow]")
-                import pandas as pd
+                if has_tabular_schema_version(cache_path, DETECTIONS_SCHEMA_VERSION):
+                    self.console.print(f"[bold yellow]✓ Using cached detections from {cache_path.name}[/bold yellow]")
+                    import pandas as pd
 
-                if cache_path.suffix == ".parquet":
-                    df = pd.read_parquet(cache_path)
-                    all_detections = df.to_dict(orient="records")
-                else:
-                    all_detections = []
-                    with open(cache_path) as f:
-                        for line in f:
-                            all_detections.append(json.loads(line))
+                    if cache_path.suffix == ".parquet":
+                        df = pd.read_parquet(cache_path)
+                        all_detections = df.to_dict(orient="records")
+                    else:
+                        all_detections = []
+                        with open(cache_path) as f:
+                            for line in f:
+                                all_detections.append(json.loads(line))
 
-                self.console.print(f"  Loaded {len(all_detections)} detections (skipped detection stage)")
-                context["detections"] = all_detections
+                    self.console.print(f"  Loaded {len(all_detections)} detections (skipped detection stage)")
+                    context["detections"] = all_detections
 
-                # Report metrics for cached results
-                ball_count = sum(1 for d in all_detections if d["object_type"] == "ball")
-                player_count = sum(1 for d in all_detections if d["object_type"] == "player")
-                context["detection_items_processed"] = len(all_detections)
-                context["detection_custom_metrics"] = {
-                    "cached": True,
-                    "ball_detections": ball_count,
-                    "player_detections": player_count,
-                }
-                return context
+                    # Report metrics for cached results
+                    ball_count = sum(1 for d in all_detections if d["object_type"] == "ball")
+                    player_count = sum(1 for d in all_detections if d["object_type"] == "player")
+                    context["detection_items_processed"] = len(all_detections)
+                    context["detection_custom_metrics"] = {
+                        "cached": True,
+                        "ball_detections": ball_count,
+                        "player_detections": player_count,
+                    }
+                    return context
+                self.console.print(
+                    f"[dim]Cached detections at {cache_path.name} have stale/missing schema; recomputing...[/dim]"
+                )
             else:
                 self.console.print(f"[dim]No cache found at {cache_path.name}, running detection...[/dim]")
 
@@ -267,6 +280,7 @@ class DetectionStage(PipelineStage):
                         # Store detections
                         for detection in final_detections:
                             det_dict = detection.to_dict()
+                            det_dict["schema_version"] = DETECTIONS_SCHEMA_VERSION
                             det_dict["frame_idx"] = frame_idx
                             det_dict["timestamp"] = frame_idx / reader.fps
                             all_detections.append(det_dict)
@@ -286,11 +300,17 @@ class DetectionStage(PipelineStage):
         if self.config.export.save_detections:
             if self.config.export.detections_format == "parquet":
                 output_path = output_dir / "detections.parquet"
-                save_detections_to_parquet(all_detections, output_path)
+                save_detections_to_parquet(
+                    all_detections,
+                    output_path,
+                    schema_version=DETECTIONS_SCHEMA_VERSION,
+                )
             elif self.config.export.detections_format == "jsonl":
                 output_path = output_dir / "detections.jsonl"
                 with open(output_path, "w") as f:
                     for det in all_detections:
+                        det = dict(det)
+                        det["schema_version"] = DETECTIONS_SCHEMA_VERSION
                         f.write(json.dumps(det) + "\n")
 
             self.console.print(f"Saved detections to: {output_path}")
@@ -333,30 +353,34 @@ class TrackingStage(PipelineStage):
                 cache_path = output_dir / "tracks.jsonl"
 
             if cache_path.exists():
-                self.console.print(f"[bold yellow]✓ Using cached tracks from {cache_path.name}[/bold yellow]")
-                import pandas as pd
+                if has_tabular_schema_version(cache_path, TRACKS_SCHEMA_VERSION):
+                    self.console.print(f"[bold yellow]✓ Using cached tracks from {cache_path.name}[/bold yellow]")
+                    import pandas as pd
 
-                if cache_path.suffix == ".parquet":
-                    df = pd.read_parquet(cache_path)
-                    all_tracks = df.to_dict(orient="records")
-                else:
-                    all_tracks = []
-                    with open(cache_path) as f:
-                        for line in f:
-                            all_tracks.append(json.loads(line))
+                    if cache_path.suffix == ".parquet":
+                        df = pd.read_parquet(cache_path)
+                        all_tracks = df.to_dict(orient="records")
+                    else:
+                        all_tracks = []
+                        with open(cache_path) as f:
+                            for line in f:
+                                all_tracks.append(json.loads(line))
 
-                self.console.print(f"  Loaded {len(all_tracks)} track points (skipped tracking stage)")
-                context["tracks"] = all_tracks
+                    self.console.print(f"  Loaded {len(all_tracks)} track points (skipped tracking stage)")
+                    context["tracks"] = all_tracks
 
-                # Report metrics for cached results
-                unique_tracks = len(set(t["track_id"] for t in all_tracks))
-                context["tracking_items_processed"] = len({t["frame_idx"] for t in all_tracks})
-                context["tracking_custom_metrics"] = {
-                    "cached": True,
-                    "unique_tracks": unique_tracks,
-                    "track_points": len(all_tracks),
-                }
-                return context
+                    # Report metrics for cached results
+                    unique_tracks = len(set(t["track_id"] for t in all_tracks))
+                    context["tracking_items_processed"] = len({t["frame_idx"] for t in all_tracks})
+                    context["tracking_custom_metrics"] = {
+                        "cached": True,
+                        "unique_tracks": unique_tracks,
+                        "track_points": len(all_tracks),
+                    }
+                    return context
+                self.console.print(
+                    f"[dim]Cached tracks at {cache_path.name} have stale/missing schema; recomputing...[/dim]"
+                )
             else:
                 self.console.print(f"[dim]No cache found at {cache_path.name}, running tracking...[/dim]")
 
@@ -408,6 +432,7 @@ class TrackingStage(PipelineStage):
             timestamp = frame_idx / fps
             for track in tracks:
                 track_dict = {
+                    "schema_version": TRACKS_SCHEMA_VERSION,
                     "track_id": track.track_id,
                     "frame_idx": frame_idx,
                     "timestamp": timestamp,
@@ -427,11 +452,17 @@ class TrackingStage(PipelineStage):
         if self.config.export.save_tracks:
             if self.config.export.detections_format == "parquet":
                 output_path = output_dir / "tracks.parquet"
-                save_detections_to_parquet(all_tracks, output_path)
+                save_detections_to_parquet(
+                    all_tracks,
+                    output_path,
+                    schema_version=TRACKS_SCHEMA_VERSION,
+                )
             elif self.config.export.detections_format == "jsonl":
                 output_path = output_dir / "tracks.jsonl"
                 with open(output_path, "w") as f:
                     for track in all_tracks:
+                        track = dict(track)
+                        track["schema_version"] = TRACKS_SCHEMA_VERSION
                         f.write(json.dumps(track) + "\n")
 
             self.console.print(f"Saved tracks to: {output_path}")
@@ -472,34 +503,38 @@ class TeamAssignmentStage(PipelineStage):
                 tracks_path = output_dir / "tracks.jsonl"
 
             if teams_path.exists() and tracks_path.exists():
-                self.console.print(f"[bold yellow]✓ Using cached team assignments from {teams_path.name}[/bold yellow]")
+                if has_tabular_schema_version(tracks_path, TRACKS_SCHEMA_VERSION):
+                    self.console.print(f"[bold yellow]✓ Using cached team assignments from {teams_path.name}[/bold yellow]")
 
-                # Load teams info
-                with open(teams_path) as f:
-                    team_info = json.load(f)
+                    # Load teams info
+                    with open(teams_path) as f:
+                        team_info = json.load(f)
 
-                # Reload tracks (they should have team assignments already)
-                import pandas as pd
-                if tracks_path.suffix == ".parquet":
-                    df = pd.read_parquet(tracks_path)
-                    tracks = df.to_dict(orient="records")
-                else:
-                    tracks = []
-                    with open(tracks_path) as f:
-                        for line in f:
-                            tracks.append(json.loads(line))
+                    # Reload tracks (they should have team assignments already)
+                    import pandas as pd
+                    if tracks_path.suffix == ".parquet":
+                        df = pd.read_parquet(tracks_path)
+                        tracks = df.to_dict(orient="records")
+                    else:
+                        tracks = []
+                        with open(tracks_path) as f:
+                            for line in f:
+                                tracks.append(json.loads(line))
 
-                context["tracks"] = tracks
-                context["team_info"] = team_info
-                self.console.print(f"  Loaded {team_info['n_teams']} teams (skipped team assignment stage)")
+                    context["tracks"] = tracks
+                    context["team_info"] = team_info
+                    self.console.print(f"  Loaded {team_info['n_teams']} teams (skipped team assignment stage)")
 
-                # Report metrics for cached results
-                context["team_assignment_items_processed"] = len(team_info.get("track_assignments", {}))
-                context["team_assignment_custom_metrics"] = {
-                    "cached": True,
-                    "n_teams": team_info["n_teams"],
-                }
-                return context
+                    # Report metrics for cached results
+                    context["team_assignment_items_processed"] = len(team_info.get("track_assignments", {}))
+                    context["team_assignment_custom_metrics"] = {
+                        "cached": True,
+                        "n_teams": team_info["n_teams"],
+                    }
+                    return context
+                self.console.print(
+                    f"[dim]Cached tracks at {tracks_path.name} have stale/missing schema; recomputing team assignment...[/dim]"
+                )
             else:
                 self.console.print("[dim]No cache found, running team assignment...[/dim]")
 
@@ -669,11 +704,17 @@ class TeamAssignmentStage(PipelineStage):
             if self.config.export.save_tracks:
                 if self.config.export.detections_format == "parquet":
                     output_path = output_dir / "tracks.parquet"
-                    save_detections_to_parquet(tracks, output_path)
+                    save_detections_to_parquet(
+                        tracks,
+                        output_path,
+                        schema_version=TRACKS_SCHEMA_VERSION,
+                    )
                 elif self.config.export.detections_format == "jsonl":
                     output_path = output_dir / "tracks.jsonl"
                     with open(output_path, "w") as f:
                         for track in tracks:
+                            track = dict(track)
+                            track["schema_version"] = TRACKS_SCHEMA_VERSION
                             f.write(json.dumps(track) + "\n")
 
                 self.console.print(f"Updated tracks with team assignments: {output_path}")
@@ -736,36 +777,41 @@ class FieldNormalizationStage(PipelineStage):
         # Check for cached normalization outputs.
         if context.get("resume", False) and field_norm_path.exists() and tracks_path.exists():
             try:
-                if tracks_path.suffix == ".parquet":
-                    df = pd.read_parquet(tracks_path)
-                    cached_tracks = df.to_dict(orient="records")
+                if has_tabular_schema_version(tracks_path, TRACKS_SCHEMA_VERSION):
+                    if tracks_path.suffix == ".parquet":
+                        df = pd.read_parquet(tracks_path)
+                        cached_tracks = df.to_dict(orient="records")
+                    else:
+                        cached_tracks = []
+                        with open(tracks_path) as f:
+                            for line in f:
+                                cached_tracks.append(json.loads(line))
+
+                    has_norm = False
+                    if cached_tracks:
+                        sample = cached_tracks[0]
+                        has_norm = "norm_x" in sample and "norm_y" in sample
+
+                    if has_norm:
+                        with open(field_norm_path) as f:
+                            field_artifact = json.load(f)
+                        self.console.print(
+                            f"[bold yellow]✓ Using cached field normalization from {field_norm_path.name}[/bold yellow]"
+                        )
+                        context["tracks"] = cached_tracks
+                        context["field_normalization"] = field_artifact
+                        context["field_normalization_path"] = str(field_norm_path)
+                        context["field_viewports_path"] = str(viewports_path)
+                        context["field_normalization_items_processed"] = len(cached_tracks)
+                        context["field_normalization_custom_metrics"] = {
+                            "cached": True,
+                            **(field_artifact.get("summary") if isinstance(field_artifact.get("summary"), dict) else {}),
+                        }
+                        return context
                 else:
-                    cached_tracks = []
-                    with open(tracks_path) as f:
-                        for line in f:
-                            cached_tracks.append(json.loads(line))
-
-                has_norm = False
-                if cached_tracks:
-                    sample = cached_tracks[0]
-                    has_norm = "norm_x" in sample and "norm_y" in sample
-
-                if has_norm:
-                    with open(field_norm_path) as f:
-                        field_artifact = json.load(f)
                     self.console.print(
-                        f"[bold yellow]✓ Using cached field normalization from {field_norm_path.name}[/bold yellow]"
+                        f"[dim]Cached tracks at {tracks_path.name} have stale/missing schema; recomputing normalization...[/dim]"
                     )
-                    context["tracks"] = cached_tracks
-                    context["field_normalization"] = field_artifact
-                    context["field_normalization_path"] = str(field_norm_path)
-                    context["field_viewports_path"] = str(viewports_path)
-                    context["field_normalization_items_processed"] = len(cached_tracks)
-                    context["field_normalization_custom_metrics"] = {
-                        "cached": True,
-                        **(field_artifact.get("summary") if isinstance(field_artifact.get("summary"), dict) else {}),
-                    }
-                    return context
             except Exception:
                 # Fall through and recompute when cached artifacts are invalid.
                 pass
@@ -813,10 +859,16 @@ class FieldNormalizationStage(PipelineStage):
 
         if self.config.export.save_tracks:
             if tracks_path.suffix == ".parquet":
-                save_detections_to_parquet(normalized_tracks, tracks_path)
+                save_detections_to_parquet(
+                    normalized_tracks,
+                    tracks_path,
+                    schema_version=TRACKS_SCHEMA_VERSION,
+                )
             else:
                 with open(tracks_path, "w") as f:
                     for track in normalized_tracks:
+                        track = dict(track)
+                        track["schema_version"] = TRACKS_SCHEMA_VERSION
                         f.write(json.dumps(track) + "\n")
 
         context["tracks"] = normalized_tracks
@@ -1825,43 +1877,52 @@ class EventDetectionStage(PipelineStage):
             timeline_path = output_dir / "score_timeline.json"
 
             if events_path.exists() and timeline_path.exists():
-                self.console.print(f"[bold yellow]✓ Using cached events from {events_path.name}[/bold yellow]")
+                has_events_schema = has_jsonl_schema_version(events_path, EVENTS_SCHEMA_VERSION)
+                has_timeline_schema = has_json_schema_version(
+                    timeline_path,
+                    SCORE_TIMELINE_SCHEMA_VERSION,
+                )
+                if has_events_schema and has_timeline_schema:
+                    self.console.print(f"[bold yellow]✓ Using cached events from {events_path.name}[/bold yellow]")
 
-                # Load events
-                events = []
-                with open(events_path) as f:
-                    for line in f:
-                        events.append(json.loads(line))
+                    # Load events
+                    events = []
+                    with open(events_path) as f:
+                        for line in f:
+                            events.append(json.loads(line))
 
-                # Load timeline
-                with open(timeline_path) as f:
-                    timeline_data = json.load(f)
+                    # Load timeline
+                    with open(timeline_path) as f:
+                        timeline_data = json.load(f)
 
-                self.console.print(f"  Loaded {len(events)} events (skipped event detection stage)")
-                context["events"] = events
-                context["score_timeline"] = timeline_data.get("timeline", [])
+                    self.console.print(f"  Loaded {len(events)} events (skipped event detection stage)")
+                    context["events"] = events
+                    context["score_timeline"] = timeline_data.get("timeline", [])
 
-                # Report metrics for cached results
-                event_type_counts = self._event_type_counts(events)
-                context["event_detection_items_processed"] = len(events)
-                context["event_detection_custom_metrics"] = {
-                    "cached": True,
-                    "shots": int(event_type_counts.get("shot", 0)),
-                    "goals": int(event_type_counts.get("goal", 0)),
-                    "passes": int(event_type_counts.get("pass", 0)),
-                    "set_pieces": self._set_piece_count(event_type_counts),
-                    "tactical_events": self._tactical_count(event_type_counts),
-                    "tactical_build_ups": int(event_type_counts.get("build_up", 0)),
-                    "tactical_pressing": int(event_type_counts.get("pressing", 0)),
-                    "tactical_defending": int(event_type_counts.get("defending", 0)),
-                    "tactical_transitions": int(event_type_counts.get("transition", 0)),
-                    "kickoffs": int(event_type_counts.get("kickoff", 0)),
-                    "throw_ins": int(event_type_counts.get("throw_in", 0)),
-                    "corner_kicks": int(event_type_counts.get("corner_kick", 0)),
-                    "free_kicks": int(event_type_counts.get("free_kick", 0)),
-                    "goal_kicks": int(event_type_counts.get("goal_kick", 0)),
-                }
-                return context
+                    # Report metrics for cached results
+                    event_type_counts = self._event_type_counts(events)
+                    context["event_detection_items_processed"] = len(events)
+                    context["event_detection_custom_metrics"] = {
+                        "cached": True,
+                        "shots": int(event_type_counts.get("shot", 0)),
+                        "goals": int(event_type_counts.get("goal", 0)),
+                        "passes": int(event_type_counts.get("pass", 0)),
+                        "set_pieces": self._set_piece_count(event_type_counts),
+                        "tactical_events": self._tactical_count(event_type_counts),
+                        "tactical_build_ups": int(event_type_counts.get("build_up", 0)),
+                        "tactical_pressing": int(event_type_counts.get("pressing", 0)),
+                        "tactical_defending": int(event_type_counts.get("defending", 0)),
+                        "tactical_transitions": int(event_type_counts.get("transition", 0)),
+                        "kickoffs": int(event_type_counts.get("kickoff", 0)),
+                        "throw_ins": int(event_type_counts.get("throw_in", 0)),
+                        "corner_kicks": int(event_type_counts.get("corner_kick", 0)),
+                        "free_kicks": int(event_type_counts.get("free_kick", 0)),
+                        "goal_kicks": int(event_type_counts.get("goal_kick", 0)),
+                    }
+                    return context
+                self.console.print(
+                    "[dim]Cached event artifacts have stale/missing schema; recomputing event stage...[/dim]"
+                )
             else:
                 self.console.print("[dim]No cache found, running event detection...[/dim]")
 
@@ -1869,7 +1930,41 @@ class EventDetectionStage(PipelineStage):
         video_metadata = context["video_metadata"]
 
         if len(tracks) == 0:
-            self.console.print("No tracks available, skipping event detection")
+            self.console.print("No tracks available; writing empty event artifacts")
+            events_path = output_dir / "events.jsonl"
+            timeline_path = output_dir / "score_timeline.json"
+
+            events_path.write_text("")
+            with open(timeline_path, "w") as f:
+                json.dump(
+                    {
+                        "schema_version": SCORE_TIMELINE_SCHEMA_VERSION,
+                        "goals": 0,
+                        "final_score": {"team_a": 0, "team_b": 0},
+                        "timeline": [],
+                    },
+                    f,
+                    indent=2,
+                )
+
+            context["events"] = []
+            context["score_timeline"] = []
+            context["event_detection_items_processed"] = 0
+            context["event_detection_custom_metrics"] = {
+                "shots": 0,
+                "goals": 0,
+                "passes": 0,
+                "set_pieces": 0,
+                "tactical_events": 0,
+                "kickoffs": 0,
+                "throw_ins": 0,
+                "corner_kicks": 0,
+                "free_kicks": 0,
+                "goal_kicks": 0,
+                "ball_coverage": 0.0,
+                "trajectory_points": 0,
+                "skipped_reason": "no_tracks",
+            }
             return context
 
         # Extract ball and player tracks
@@ -2011,6 +2106,7 @@ class EventDetectionStage(PipelineStage):
         with open(events_path, "w") as f:
             for event in all_events:
                 event_dict = {
+                    "schema_version": EVENTS_SCHEMA_VERSION,
                     "event_type": event.event_type,
                     "frame_idx": event.frame_idx,
                     "timestamp": event.timestamp,
@@ -2048,6 +2144,7 @@ class EventDetectionStage(PipelineStage):
         timeline_path = output_dir / "score_timeline.json"
         with open(timeline_path, "w") as f:
             json.dump({
+                "schema_version": SCORE_TIMELINE_SCHEMA_VERSION,
                 "goals": len(goal_events),
                 "final_score": current_score,
                 "timeline": score_timeline,

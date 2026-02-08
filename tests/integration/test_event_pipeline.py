@@ -778,3 +778,103 @@ class TestEventPipelineIntegration:
         assert counts["pressing_events"] >= 1
         assert counts["defending_events"] >= 1
         assert counts["transition_events"] >= 1
+
+    def test_event_stage_resume_ignores_stale_schema_cache(self, tmp_path):
+        """Resume mode should recompute when cached event artifacts lack schema fields."""
+        import sys
+        import types
+
+        if "click" not in sys.modules:
+            click_stub = types.ModuleType("click")
+
+            def _decorator(*_args, **_kwargs):
+                def _wrapper(fn):
+                    return fn
+                return _wrapper
+
+            click_stub.command = _decorator
+            click_stub.option = _decorator
+            click_stub.Path = lambda **_kwargs: str
+            sys.modules["click"] = click_stub
+
+        from src.cli import EventDetectionStage
+        from src.config.schemas import PipelineConfig
+        from src.pipeline.base import Pipeline, PipelineStage
+        from src.pipeline.contracts import (
+            EVENTS_SCHEMA_VERSION,
+            SCORE_TIMELINE_SCHEMA_VERSION,
+        )
+
+        fps = 10.0
+        tracks = _build_pass_and_kickoff_tracks(fps=fps)
+
+        class SeedTracksStage(PipelineStage):
+            def run(self, context):
+                context["video_metadata"] = {
+                    "fps": fps,
+                    "duration": 4.0,
+                    "total_frames": 40,
+                    "width": 1000,
+                    "height": 600,
+                }
+                context["tracks"] = tracks
+                return context
+
+        config = PipelineConfig()
+        config.events.detect_shots = False
+        config.events.detect_goals = False
+        config.events.detect_passes = True
+        config.events.detect_set_pieces = True
+        config.events.interpolate_ball = False
+        config.team_analytics.possession_max_ball_distance_px = 80.0
+        config.team_analytics.possession_smoothing_frames = 1
+        config.team_analytics.possession_min_stable_frames = 1
+        config.team_analytics.possession_min_segment_frames = 1
+        config.team_analytics.pass_min_gap_seconds = 0.0
+        config.team_analytics.pass_max_gap_seconds = 1.0
+
+        pipeline = Pipeline(config)
+        pipeline.add_stage(SeedTracksStage("seed_tracks", config))
+        pipeline.add_stage(EventDetectionStage(config))
+
+        video_path = tmp_path / "input.mp4"
+        video_path.touch()
+        output_dir = tmp_path / "run_resume_stale"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Stale cache (schema_version missing by design).
+        with open(output_dir / "events.jsonl", "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "event_type": "stale_event",
+                        "frame_idx": 0,
+                        "timestamp": 0.0,
+                        "confidence": 1.0,
+                        "location": None,
+                        "metadata": {},
+                    }
+                )
+                + "\n"
+            )
+        with open(output_dir / "score_timeline.json", "w") as f:
+            json.dump(
+                {
+                    "goals": 99,
+                    "final_score": {"team_a": 9, "team_b": 9},
+                    "timeline": [],
+                },
+                f,
+            )
+
+        pipeline.run(video_path, output_dir, resume=True)
+
+        with open(output_dir / "events.jsonl") as f:
+            events = [json.loads(line) for line in f if line.strip()]
+        assert events, "Expected recomputed events, not stale cache payload"
+        assert all(event.get("schema_version") == EVENTS_SCHEMA_VERSION for event in events)
+        assert all(event.get("event_type") != "stale_event" for event in events)
+
+        with open(output_dir / "score_timeline.json") as f:
+            timeline_payload = json.load(f)
+        assert timeline_payload["schema_version"] == SCORE_TIMELINE_SCHEMA_VERSION
