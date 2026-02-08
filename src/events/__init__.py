@@ -33,6 +33,9 @@ __all__ = [
     "PassInferenceConfig",
     "PassInferencer",
     "infer_pass_events",
+    "SetPieceInferenceConfig",
+    "SetPieceInferencer",
+    "infer_set_piece_events",
 ]
 
 _SYMBOL_TO_MODULE = {
@@ -65,6 +68,9 @@ _SYMBOL_TO_MODULE = {
     "PassInferenceConfig": "src.events.passes",
     "PassInferencer": "src.events.passes",
     "infer_pass_events": "src.events.passes",
+    "SetPieceInferenceConfig": "src.events.set_pieces",
+    "SetPieceInferencer": "src.events.set_pieces",
+    "infer_set_piece_events": "src.events.set_pieces",
 }
 
 
