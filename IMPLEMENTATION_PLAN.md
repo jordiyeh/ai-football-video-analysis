@@ -24,7 +24,7 @@
 - [x] [HIGH] Step 07 — Stats API + UI panel: Add backend endpoints in `src/ui/server.py` to serve match stats, add UI rendering for stats panel with team comparison in `src/ui/static/app.js` and `src/ui/static/index.html`. Test: `pytest tests/unit/test_ui_server.py -q`
 - [x] [HIGH] Step 08 — Visualization framework scaffolding: Create package `src/export/visualizations/` with rendering interfaces and shared field canvas utilities. Test: `pytest tests/unit -q -k "visualization or field_normalization"`
 - [x] [HIGH] Step 09 — Shot map visualization: Implement `src/export/visualizations/shot_map.py` with per-team and per-player filters. Test: `pytest tests/unit -q -k "shot_map or event_detection"`
-- [ ] [HIGH] Step 10 — Heat map visualization: Implement `src/export/visualizations/heat_map.py` from track/normalized coordinates, supporting team and player modes. Test: `pytest tests/unit -q -k "heat_map or field_normalization or team_analytics"`
+- [x] [HIGH] Step 10 — Heat map visualization: Implement `src/export/visualizations/heat_map.py` from track/normalized coordinates, supporting team and player modes. Test: `pytest tests/unit -q -k "heat_map or field_normalization or team_analytics"`
 - [ ] [HIGH] Step 11 — Pass map and tactical map visualizations: Implement `src/export/visualizations/pass_map.py` and `src/export/visualizations/tactical_map.py`, expose via API in `src/ui/server.py` and UI toggles. Test: `pytest tests/unit -q -k "pass_map or tactical_map or team_analytics"`
 
 ### Phase 3: Tactical Event Classification

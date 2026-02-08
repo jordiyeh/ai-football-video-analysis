@@ -18,6 +18,11 @@ from src.export.visualizations.shot_map import (
     ShotMapRenderer,
     build_shot_map,
 )
+from src.export.visualizations.heat_map import (
+    HEAT_MAP_SCHEMA_VERSION,
+    HeatMapRenderer,
+    build_heat_map,
+)
 
 __all__ = [
     "VISUALIZATION_SCHEMA_VERSION",
@@ -32,4 +37,7 @@ __all__ = [
     "SHOT_MAP_SCHEMA_VERSION",
     "ShotMapRenderer",
     "build_shot_map",
+    "HEAT_MAP_SCHEMA_VERSION",
+    "HeatMapRenderer",
+    "build_heat_map",
 ]
