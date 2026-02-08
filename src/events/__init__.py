@@ -30,6 +30,9 @@ __all__ = [
     "PlayerClusteringAnalyzer",
     "GoalkeeperDiveEvent",
     "GoalkeeperAnalyzer",
+    "PassInferenceConfig",
+    "PassInferencer",
+    "infer_pass_events",
 ]
 
 _SYMBOL_TO_MODULE = {
@@ -59,6 +62,9 @@ _SYMBOL_TO_MODULE = {
     "PlayerClusteringAnalyzer": "src.events.player_analysis",
     "GoalkeeperDiveEvent": "src.events.player_analysis",
     "GoalkeeperAnalyzer": "src.events.player_analysis",
+    "PassInferenceConfig": "src.events.passes",
+    "PassInferencer": "src.events.passes",
+    "infer_pass_events": "src.events.passes",
 }
 
 
