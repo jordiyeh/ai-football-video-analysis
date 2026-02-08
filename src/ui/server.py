@@ -3465,6 +3465,7 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             video_metadata_path = run_path / "video_metadata.json"
             events_path = run_path / "events.jsonl"
             timeline_path = run_path / "score_timeline.json"
+            player_analytics_path = run_path / "player_analytics.json"
             match_stats_path = run_path / "match_stats.json"
             player_reels_path = run_path / "player_highlights.json"
             cross_match_report_path = run_path / "cross_match_report.json"
@@ -3476,6 +3477,7 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
                 "has_manifest": manifest_path.exists(),
                 "has_events": events_path.exists(),
                 "has_timeline": timeline_path.exists(),
+                "has_player_analytics": player_analytics_path.exists(),
                 "has_match_stats": match_stats_path.exists(),
                 "has_player_reels": player_reels_path.exists(),
                 "has_cross_match_report": cross_match_report_path.exists(),
@@ -3509,6 +3511,18 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
                     ),
                     "player_segments_total": summary.get("player_segments_total", 0),
                 }
+
+            if player_analytics_path.exists():
+                with open(player_analytics_path) as f:
+                    player_analytics = json.load(f)
+                summary = player_analytics.get("summary", {})
+                if isinstance(summary, dict):
+                    run_info["player_analytics_summary"] = {
+                        "runs_analyzed": summary.get("runs_analyzed", 0),
+                        "players_detected": summary.get("players_detected", 0),
+                        "events_total": summary.get("events_total", 0),
+                        "sprints_total": summary.get("sprints_total", 0),
+                    }
 
             if cross_match_report_path.exists():
                 with open(cross_match_report_path) as f:
@@ -3631,6 +3645,20 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             raise HTTPException(status_code=404, detail="Match stats not available for this run")
 
         with open(match_stats_path) as f:
+            return json.load(f)
+
+    @app.get("/api/runs/{run_name}/player_analytics")
+    async def get_run_player_analytics(run_name: str):
+        """Get player_analytics.json for a specific run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        analytics_path = run_path / "player_analytics.json"
+        if not analytics_path.exists():
+            raise HTTPException(status_code=404, detail="Player analytics not available for this run")
+
+        with open(analytics_path) as f:
             return json.load(f)
 
     def _sanitize_json_value(value: Any) -> Any:

@@ -281,6 +281,7 @@ class Pipeline:
             "field_normalization": ["field_normalization.json"],
             "field_viewports": ["field_viewports.parquet"],
             "team_analytics": ["team_analytics.json"],
+            "player_analytics": ["player_analytics.json"],
             "match_stats": ["match_stats.json"],
             "team_possession_timeline": ["team_possession_timeline.csv"],
             "team_pass_network": ["team_pass_network.csv"],
@@ -374,6 +375,7 @@ class Pipeline:
         event_metrics = context.get("event_detection_custom_metrics", {})
         highlight_metrics = context.get("highlight_generation_custom_metrics", {})
         player_reel_metrics = context.get("player_highlight_reels_custom_metrics", {})
+        player_analytics_metrics = context.get("player_analytics_custom_metrics", {})
         team_metrics = context.get("team_analytics_custom_metrics", {})
         match_stats_metrics = context.get("match_stats_custom_metrics", {})
         cross_match_metrics = context.get("cross_match_reporting_custom_metrics", {})
@@ -464,6 +466,10 @@ class Pipeline:
                 "highlight_candidates": highlight_metrics.get("candidates"),
                 "players_with_reels": player_reel_metrics.get("players_with_reels"),
                 "player_reel_segments_total": player_reel_metrics.get("player_segments_total"),
+                "player_analytics_players": player_analytics_metrics.get("players_detected"),
+                "player_analytics_runs": player_analytics_metrics.get("runs_analyzed"),
+                "player_analytics_events_total": player_analytics_metrics.get("events_total"),
+                "player_analytics_sprints_total": player_analytics_metrics.get("sprints_total"),
                 "possession_frames": team_metrics.get("frames_with_possession"),
                 "passes_inferred": team_metrics.get("passes_inferred"),
                 "cross_match_matches": cross_match_metrics.get("matches_analyzed"),
@@ -533,6 +539,7 @@ class Pipeline:
                 "has_score_timeline": "score_timeline" in artifacts,
                 "has_highlights": "highlights" in artifacts,
                 "has_player_reels": "player_highlights" in artifacts,
+                "has_player_analytics": "player_analytics" in artifacts,
                 "has_team_analytics": "team_analytics" in artifacts,
                 "has_match_stats": "match_stats" in artifacts,
                 "has_cross_match_report": "cross_match_report" in artifacts,

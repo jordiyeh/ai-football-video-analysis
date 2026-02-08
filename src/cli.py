@@ -2087,6 +2087,100 @@ class EventDetectionStage(PipelineStage):
         return context
 
 
+class PlayerAnalyticsStage(PipelineStage):
+    """Stage E.1: Per-player analytics across runs."""
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__("player_analytics", config)
+
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Build and persist player_analytics.json from run artifacts."""
+        from src.analytics import build_player_analytics_report
+
+        output_dir = Path(context["output_dir"])
+        analytics_path = output_dir / "player_analytics.json"
+
+        if context.get("resume", False) and analytics_path.exists():
+            self.console.print(
+                f"[bold yellow]✓ Using cached player analytics from {analytics_path.name}[/bold yellow]"
+            )
+            with open(analytics_path) as f:
+                analytics_artifact = json.load(f)
+
+            summary = analytics_artifact.get("summary", {})
+            context["player_analytics"] = analytics_artifact
+            context["player_analytics_path"] = str(analytics_path)
+            context["player_analytics_items_processed"] = int(summary.get("players_detected", 0))
+            context["player_analytics_custom_metrics"] = {
+                "cached": True,
+                "runs_analyzed": int(summary.get("runs_analyzed", 0)),
+                "players_detected": int(summary.get("players_detected", 0)),
+                "events_total": int(summary.get("events_total", 0)),
+                "sprints_total": int(summary.get("sprints_total", 0)),
+            }
+            return context
+
+        cross_cfg = self.config.cross_match
+        runs_root = (
+            Path(cross_cfg.runs_root).expanduser()
+            if cross_cfg.runs_root
+            else output_dir.parent
+        )
+        if not runs_root.exists():
+            runs_root = output_dir.parent
+
+        analytics_payload = build_player_analytics_report(
+            runs_root=runs_root,
+            current_run=output_dir,
+            config={
+                "include_current_run": True,
+                "max_runs": max(1, int(cross_cfg.max_runs)),
+                "min_assignment_confidence": float(self.config.team_analytics.min_assignment_confidence),
+                "sprint_speed_threshold_px_per_sec": 240.0,
+                "sprint_min_duration_seconds": 0.6,
+                "max_track_gap_frames": 3,
+            },
+        )
+
+        analytics_artifact = {
+            "schema_version": analytics_payload.get("schema_version", "1.0"),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "run_name": output_dir.name,
+            "video_id": Path(context["video_path"]).stem,
+            "summary": analytics_payload.get("summary", {}),
+            "runs": analytics_payload.get("runs", []),
+            "players": analytics_payload.get("players", []),
+            "sources": {
+                "runs_root": str(runs_root),
+                "current_run": output_dir.name,
+            },
+        }
+
+        with open(analytics_path, "w") as f:
+            json.dump(analytics_artifact, f, indent=2)
+
+        summary = analytics_artifact.get("summary", {})
+        self.console.print(f"Saved player analytics to: {analytics_path}")
+        self.console.print(
+            "  Player analytics summary: "
+            f"runs={int(summary.get('runs_analyzed', 0))}, "
+            f"players={int(summary.get('players_detected', 0))}, "
+            f"events={int(summary.get('events_total', 0))}, "
+            f"sprints={int(summary.get('sprints_total', 0))}"
+        )
+
+        context["player_analytics"] = analytics_artifact
+        context["player_analytics_path"] = str(analytics_path)
+        context["player_analytics_items_processed"] = int(summary.get("players_detected", 0))
+        context["player_analytics_custom_metrics"] = {
+            "runs_analyzed": int(summary.get("runs_analyzed", 0)),
+            "players_detected": int(summary.get("players_detected", 0)),
+            "events_total": int(summary.get("events_total", 0)),
+            "sprints_total": int(summary.get("sprints_total", 0)),
+        }
+        return context
+
+
 class MatchStatsStage(PipelineStage):
     """Stage E.2: Unified team-level match stats artifact."""
 
@@ -3047,6 +3141,7 @@ def main(video: str, output: str, config: str | None, resume: bool, no_overlay: 
     pipeline.add_stage(PlayerIdentityStage(pipeline_config))
     pipeline.add_stage(TeamAnalyticsStage(pipeline_config))
     pipeline.add_stage(EventDetectionStage(pipeline_config))
+    pipeline.add_stage(PlayerAnalyticsStage(pipeline_config))
     pipeline.add_stage(MatchStatsStage(pipeline_config))
     pipeline.add_stage(HighlightGenerationStage(pipeline_config))
     pipeline.add_stage(PlayerHighlightReelsStage(pipeline_config))

@@ -38,7 +38,7 @@
 
 ### Phase 5: Player and Season Analytics
 
-- [ ] [HIGH] Step 15 — Per-player analytics module: Create `src/analytics/player.py` for per-player stats across runs (minutes, distance, sprints, events), emit player analytics artifact and API payloads. Test: `pytest tests/unit -q -k "player_analysis or player_reels or team_analytics"`
+- [x] [HIGH] Step 15 — Per-player analytics module: Create `src/analytics/player.py` for per-player stats across runs (minutes, distance, sprints, events), emit player analytics artifact and API payloads. Test: `pytest tests/unit -q -k "player_analysis or player_reels or team_analytics"`
 - [ ] [HIGH] Step 16 — Season analytics enhancements: Create `src/analytics/season.py`, extend cross-match outputs with possession trend, W/L/D, match-type filter, formation filter, and radar-ready aggregates. Test: `pytest tests/unit/test_cross_match_reporting.py -q`
 
 ### Phase 6: Optional Integrations
