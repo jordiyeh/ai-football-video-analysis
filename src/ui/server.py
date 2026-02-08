@@ -6,6 +6,7 @@ import csv
 import io
 import zipfile
 import os
+import math
 import traceback
 import threading
 from contextlib import asynccontextmanager
@@ -3538,6 +3539,203 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
 
         return {"runs": runs}
 
+    def _coerce_non_negative_float(value: Any) -> float | None:
+        """Parse non-negative finite float values."""
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(parsed):
+            return None
+        return max(0.0, parsed)
+
+    def _load_run_duration_seconds(run_path: Path) -> float | None:
+        """Load duration seconds from video metadata if available."""
+        video_metadata_path = run_path / "video_metadata.json"
+        if not video_metadata_path.exists():
+            return None
+
+        with open(video_metadata_path) as f:
+            metadata = json.load(f)
+
+        if not isinstance(metadata, dict):
+            return None
+
+        for key in ("duration", "duration_seconds"):
+            duration = _coerce_non_negative_float(metadata.get(key))
+            if duration is not None and duration > 0:
+                return duration
+        return None
+
+    def _load_speedrun_events(run_path: Path) -> list[dict[str, Any]]:
+        """Load events merged with confirmations and drop rejected/deleted rows."""
+        events_path = run_path / "events.jsonl"
+        raw_events: list[dict[str, Any]] = []
+        if events_path.exists():
+            with open(events_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(payload, dict):
+                        raw_events.append(payload)
+
+        confirmations = load_confirmations(run_path)
+        merged = merge_events_with_confirmations(raw_events, confirmations)
+
+        filtered: list[dict[str, Any]] = []
+        for event in merged:
+            status = str(event.get("status") or "pending").strip().lower()
+            if status in {"rejected", "deleted"}:
+                continue
+            filtered.append(event)
+        return filtered
+
+    def _build_speedrun_windows(
+        run_path: Path,
+        *,
+        pre_padding: float,
+        post_padding: float,
+        min_window: float,
+        merge_gap: float,
+        min_confidence: float,
+        event_types: set[str] | None,
+    ) -> dict[str, Any]:
+        """Build merged high-action windows for speedrun playback mode."""
+        events = _load_speedrun_events(run_path)
+
+        selected_events: list[dict[str, Any]] = []
+        for event in events:
+            event_type = str(event.get("event_type") or "unknown").strip().lower()
+            if event_types and event_type not in event_types:
+                continue
+
+            confidence = _coerce_non_negative_float(event.get("confidence"))
+            if confidence is not None and confidence < min_confidence:
+                continue
+
+            timestamp = _coerce_non_negative_float(event.get("timestamp"))
+            if timestamp is None:
+                timestamp = _coerce_non_negative_float(event.get("t"))
+            if timestamp is None:
+                continue
+
+            selected_events.append(
+                {
+                    "timestamp": timestamp,
+                    "event_type": event_type,
+                    "confidence": confidence,
+                }
+            )
+
+        selected_events.sort(key=lambda row: float(row["timestamp"]))
+        duration = _load_run_duration_seconds(run_path)
+        if duration is None:
+            if selected_events:
+                max_timestamp = max(float(row["timestamp"]) for row in selected_events)
+                duration = max_timestamp + max(post_padding, min_window, 1.0)
+            else:
+                duration = 0.0
+
+        raw_windows: list[tuple[float, float]] = []
+        for event in selected_events:
+            timestamp = float(event["timestamp"])
+            start = max(0.0, timestamp - pre_padding)
+            end = max(start, timestamp + post_padding)
+            if duration > 0:
+                end = min(duration, end)
+
+            if min_window > 0 and (end - start) < min_window:
+                deficit = min_window - (end - start)
+                start -= deficit / 2.0
+                end += deficit / 2.0
+                if start < 0:
+                    end -= start
+                    start = 0.0
+                if duration > 0 and end > duration:
+                    start -= end - duration
+                    end = duration
+                if start < 0:
+                    start = 0.0
+                if duration > 0 and end > duration:
+                    end = duration
+            raw_windows.append((start, max(start, end)))
+
+        fallback_full_match_window = False
+        if duration > 0 and not raw_windows:
+            fallback_full_match_window = True
+            raw_windows = [(0.0, duration)]
+
+        raw_windows.sort(key=lambda row: row[0])
+        merged_windows: list[list[float]] = []
+        for start, end in raw_windows:
+            if not merged_windows or start > merged_windows[-1][1] + merge_gap:
+                merged_windows.append([start, end])
+            else:
+                merged_windows[-1][1] = max(merged_windows[-1][1], end)
+
+        high_action_windows: list[dict[str, Any]] = []
+        for index, (start, end) in enumerate(merged_windows):
+            event_count = sum(
+                1
+                for event in selected_events
+                if start <= float(event["timestamp"]) <= end
+            )
+            high_action_windows.append(
+                {
+                    "index": index,
+                    "start": round(float(start), 3),
+                    "end": round(float(end), 3),
+                    "duration": round(float(max(0.0, end - start)), 3),
+                    "event_count": int(event_count),
+                }
+            )
+
+        low_action_windows: list[dict[str, Any]] = []
+        if duration > 0:
+            cursor = 0.0
+            for start, end in merged_windows:
+                if start > cursor:
+                    low_action_windows.append(
+                        {
+                            "start": round(float(cursor), 3),
+                            "end": round(float(start), 3),
+                            "duration": round(float(start - cursor), 3),
+                        }
+                    )
+                cursor = max(cursor, end)
+            if cursor < duration:
+                low_action_windows.append(
+                    {
+                        "start": round(float(cursor), 3),
+                        "end": round(float(duration), 3),
+                        "duration": round(float(duration - cursor), 3),
+                    }
+                )
+
+        return {
+            "schema_version": "1.0",
+            "run_name": run_path.name,
+            "duration_seconds": round(float(duration), 3),
+            "window_config": {
+                "pre_padding_seconds": round(float(pre_padding), 3),
+                "post_padding_seconds": round(float(post_padding), 3),
+                "min_window_seconds": round(float(min_window), 3),
+                "merge_gap_seconds": round(float(merge_gap), 3),
+                "min_confidence": round(float(min_confidence), 3),
+                "event_types": sorted(event_types) if event_types else ["*"],
+            },
+            "events_considered": len(selected_events),
+            "high_action_windows": high_action_windows,
+            "low_action_windows": low_action_windows,
+            "speedrun_ready": len(high_action_windows) > 0,
+            "fallback_full_match_window": fallback_full_match_window,
+        }
+
     @app.delete("/api/runs/{run_name}")
     async def delete_run(run_name: str):
         """Delete an analysis run — removes the run directory and any associated pipeline job metadata."""
@@ -3618,6 +3816,49 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
                 result["summary"] = json.load(f)
 
         return result
+
+    @app.get("/api/runs/{run_name}/playback/speedrun")
+    async def get_run_speedrun_windows(
+        run_name: str,
+        pre_padding: float = 6.0,
+        post_padding: float = 8.0,
+        min_window: float = 6.0,
+        merge_gap: float = 0.35,
+        min_confidence: float = 0.0,
+        event_types: str | None = None,
+    ):
+        """Get merged high-action windows for speedrun playback mode."""
+        run_path = ensure_run_exists(run_name)
+
+        if pre_padding < 0:
+            raise HTTPException(status_code=400, detail="pre_padding must be >= 0")
+        if post_padding < 0:
+            raise HTTPException(status_code=400, detail="post_padding must be >= 0")
+        if min_window < 0:
+            raise HTTPException(status_code=400, detail="min_window must be >= 0")
+        if merge_gap < 0:
+            raise HTTPException(status_code=400, detail="merge_gap must be >= 0")
+        if min_confidence < 0 or min_confidence > 1:
+            raise HTTPException(status_code=400, detail="min_confidence must be within [0, 1]")
+
+        normalized_event_types: set[str] | None = None
+        if event_types is not None:
+            parsed = {
+                token.strip().lower()
+                for token in event_types.split(",")
+                if token.strip()
+            }
+            normalized_event_types = parsed or None
+
+        return _build_speedrun_windows(
+            run_path,
+            pre_padding=float(pre_padding),
+            post_padding=float(post_padding),
+            min_window=float(min_window),
+            merge_gap=float(merge_gap),
+            min_confidence=float(min_confidence),
+            event_types=normalized_event_types,
+        )
 
     @app.get("/api/runs/{run_name}/team_analytics")
     async def get_run_team_analytics(run_name: str):

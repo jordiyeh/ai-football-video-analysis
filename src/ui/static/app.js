@@ -36,6 +36,19 @@ let pipelineConfigs = [];
 let pipelineJobsPollHandle = null;
 let pipelineJobsSnapshot = '';
 let currentPlaybackSpeed = 1;
+let speedrunState = {
+    enabled: false,
+    windows: [],
+    lowActionWindows: [],
+    durationSeconds: 0,
+    eventsConsidered: 0,
+    fallbackFullMatchWindow: false,
+    loadedRun: null,
+    currentWindowIndex: -1,
+    statusMessage: 'Speedrun unavailable'
+};
+let viewerLayoutMode = 'split';
+let speedrunJumpInProgress = false;
 let eventFilterMode = 'all';
 let tagFilters = {
     label: '',
@@ -64,6 +77,7 @@ let suggestionPage = 0;
 const EVENT_PAGE_SIZE = 20;
 const ASSIGNMENT_PAGE_SIZE = 30;
 const SUGGESTION_PAGE_SIZE = 30;
+const VIEWER_LAYOUT_MODES = ['split', 'stacked'];
 let confirmModalCallback = null;
 let teamsData = [];
 let currentTeamId = null;
@@ -94,6 +108,9 @@ const tagsList = document.getElementById('tagsList');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const timelineProgress = document.getElementById('timelineProgress');
 const timelineBar = document.getElementById('timelineBar');
+const speedrunToggleBtn = document.getElementById('toggleSpeedrunBtn');
+const speedrunStatus = document.getElementById('speedrunStatus');
+const layoutToggleBtn = document.getElementById('layoutToggleBtn');
 const overlayCanvas = document.getElementById('overlayCanvas');
 const playerReelsList = document.getElementById('playerReelsList');
 const playerReelsSummary = document.getElementById('playerReelsSummary');
@@ -342,6 +359,283 @@ document.addEventListener('fullscreenchange', () => {
     setTimeout(setupCanvas, 100);
 });
 
+function loadViewerLayoutPreference() {
+    try {
+        const stored = localStorage.getItem('viewer_layout_mode');
+        if (stored && VIEWER_LAYOUT_MODES.includes(stored)) {
+            return stored;
+        }
+    } catch (error) {
+        // Ignore storage read errors and fall back to split.
+    }
+    return 'split';
+}
+
+function applyViewerLayout(mode) {
+    const normalized = VIEWER_LAYOUT_MODES.includes(mode) ? mode : 'split';
+    viewerLayoutMode = normalized;
+
+    if (viewer) {
+        viewer.classList.remove('layout-split', 'layout-stacked');
+        viewer.classList.add(`layout-${normalized}`);
+    }
+
+    if (layoutToggleBtn) {
+        layoutToggleBtn.textContent = normalized === 'stacked' ? 'Layout: Stacked' : 'Layout: Split';
+    }
+
+    try {
+        localStorage.setItem('viewer_layout_mode', normalized);
+    } catch (error) {
+        // Ignore storage write errors.
+    }
+
+    setTimeout(setupCanvas, 30);
+}
+
+function toggleViewerLayout() {
+    const idx = VIEWER_LAYOUT_MODES.indexOf(viewerLayoutMode);
+    const nextMode = VIEWER_LAYOUT_MODES[(idx + 1) % VIEWER_LAYOUT_MODES.length];
+    applyViewerLayout(nextMode);
+}
+
+function setSpeedrunStatus(message) {
+    speedrunState.statusMessage = String(message || '');
+    if (speedrunStatus) {
+        speedrunStatus.textContent = speedrunState.statusMessage;
+    }
+}
+
+function updateSpeedrunControls() {
+    const hasWindows = Array.isArray(speedrunState.windows) && speedrunState.windows.length > 0;
+    if (!hasWindows && speedrunState.enabled) {
+        speedrunState.enabled = false;
+        speedrunState.currentWindowIndex = -1;
+    }
+
+    if (speedrunToggleBtn) {
+        speedrunToggleBtn.disabled = !hasWindows;
+        speedrunToggleBtn.classList.toggle('active', speedrunState.enabled);
+        speedrunToggleBtn.textContent = speedrunState.enabled ? 'Speedrun On' : 'Speedrun Off';
+    }
+
+    if (!speedrunState.statusMessage) {
+        if (!hasWindows) {
+            speedrunState.statusMessage = 'Speedrun unavailable';
+        } else if (speedrunState.fallbackFullMatchWindow) {
+            speedrunState.statusMessage = 'Speedrun ready (full match)';
+        } else {
+            speedrunState.statusMessage = `Speedrun ready (${speedrunState.windows.length} windows)`;
+        }
+    }
+
+    if (speedrunStatus) {
+        speedrunStatus.textContent = speedrunState.statusMessage;
+    }
+}
+
+function resetSpeedrunState() {
+    speedrunState.enabled = false;
+    speedrunState.windows = [];
+    speedrunState.lowActionWindows = [];
+    speedrunState.durationSeconds = 0;
+    speedrunState.eventsConsidered = 0;
+    speedrunState.fallbackFullMatchWindow = false;
+    speedrunState.loadedRun = null;
+    speedrunState.currentWindowIndex = -1;
+    speedrunState.statusMessage = 'Speedrun unavailable';
+    speedrunJumpInProgress = false;
+    updateSpeedrunControls();
+}
+
+function normalizeSpeedrunWindow(windowRow) {
+    const start = Number(windowRow && windowRow.start);
+    const end = Number(windowRow && windowRow.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return null;
+    }
+    return {
+        start: Math.max(0, start),
+        end: Math.max(start, end),
+        duration: Math.max(0, end - start),
+        eventCount: Number(windowRow && windowRow.event_count) || 0
+    };
+}
+
+async function loadSpeedrunWindows(runName) {
+    if (!runName) return;
+
+    speedrunState.enabled = false;
+    speedrunState.loadedRun = runName;
+    speedrunState.currentWindowIndex = -1;
+    speedrunState.statusMessage = 'Loading speedrun...';
+    updateSpeedrunControls();
+
+    try {
+        const response = await fetchWithRetry(`/api/runs/${runName}/playback/speedrun`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const rawWindows = Array.isArray(payload.high_action_windows)
+            ? payload.high_action_windows
+            : [];
+        const rawLowAction = Array.isArray(payload.low_action_windows)
+            ? payload.low_action_windows
+            : [];
+
+        speedrunState.windows = rawWindows
+            .map(normalizeSpeedrunWindow)
+            .filter(Boolean)
+            .sort((a, b) => a.start - b.start);
+        speedrunState.lowActionWindows = rawLowAction
+            .map(normalizeSpeedrunWindow)
+            .filter(Boolean)
+            .sort((a, b) => a.start - b.start);
+        speedrunState.durationSeconds = Number(payload.duration_seconds) || 0;
+        speedrunState.eventsConsidered = Number(payload.events_considered) || 0;
+        speedrunState.fallbackFullMatchWindow = Boolean(payload.fallback_full_match_window);
+        speedrunState.currentWindowIndex = -1;
+
+        if (speedrunState.windows.length === 0) {
+            setSpeedrunStatus('Speedrun unavailable');
+        } else if (speedrunState.fallbackFullMatchWindow) {
+            setSpeedrunStatus('Speedrun ready (full match)');
+        } else {
+            setSpeedrunStatus(`Speedrun ready (${speedrunState.windows.length} windows)`);
+        }
+        updateSpeedrunControls();
+    } catch (error) {
+        console.error('Error loading speedrun windows:', error);
+        speedrunState.windows = [];
+        speedrunState.lowActionWindows = [];
+        speedrunState.durationSeconds = Number(videoPlayer.duration || 0);
+        speedrunState.eventsConsidered = 0;
+        speedrunState.fallbackFullMatchWindow = false;
+        speedrunState.currentWindowIndex = -1;
+        setSpeedrunStatus('Speedrun unavailable');
+        updateSpeedrunControls();
+    }
+}
+
+function findSpeedrunWindowIndex(timeValue) {
+    if (!Array.isArray(speedrunState.windows) || speedrunState.windows.length === 0) {
+        return -1;
+    }
+    return speedrunState.windows.findIndex((windowRow) => (
+        timeValue >= windowRow.start && timeValue <= windowRow.end
+    ));
+}
+
+function findNextSpeedrunWindowIndex(timeValue) {
+    if (!Array.isArray(speedrunState.windows) || speedrunState.windows.length === 0) {
+        return -1;
+    }
+    return speedrunState.windows.findIndex((windowRow) => timeValue < windowRow.start);
+}
+
+function jumpToSpeedrunWindow(index, keepPlayState = true) {
+    const targetWindow = speedrunState.windows[index];
+    if (!targetWindow) return false;
+
+    const shouldPlay = keepPlayState ? !videoPlayer.paused : false;
+    speedrunJumpInProgress = true;
+    videoPlayer.currentTime = targetWindow.start;
+    speedrunState.currentWindowIndex = index;
+    speedrunJumpInProgress = false;
+
+    if (shouldPlay) {
+        videoPlayer.play().catch(() => {});
+    }
+
+    setSpeedrunStatus(`Speedrun active ${index + 1}/${speedrunState.windows.length}`);
+    return true;
+}
+
+function disableSpeedrunMode() {
+    speedrunState.enabled = false;
+    speedrunState.currentWindowIndex = -1;
+
+    if (speedrunState.windows.length === 0) {
+        setSpeedrunStatus('Speedrun unavailable');
+    } else if (speedrunState.fallbackFullMatchWindow) {
+        setSpeedrunStatus('Speedrun ready (full match)');
+    } else {
+        setSpeedrunStatus(`Speedrun ready (${speedrunState.windows.length} windows)`);
+    }
+    updateSpeedrunControls();
+}
+
+function toggleSpeedrunMode() {
+    if (!speedrunState.windows.length) {
+        showToast('Speedrun windows are unavailable for this run.', 'error');
+        return;
+    }
+
+    if (speedrunState.enabled) {
+        disableSpeedrunMode();
+        return;
+    }
+
+    speedrunState.enabled = true;
+    speedrunState.currentWindowIndex = -1;
+    updateSpeedrunControls();
+
+    const now = Number(videoPlayer.currentTime || 0);
+    const activeIndex = findSpeedrunWindowIndex(now);
+    if (activeIndex >= 0) {
+        speedrunState.currentWindowIndex = activeIndex;
+        setSpeedrunStatus(`Speedrun active ${activeIndex + 1}/${speedrunState.windows.length}`);
+        return;
+    }
+
+    const nextIndex = findNextSpeedrunWindowIndex(now);
+    if (nextIndex >= 0) {
+        jumpToSpeedrunWindow(nextIndex, true);
+        return;
+    }
+
+    jumpToSpeedrunWindow(0, true);
+}
+
+function enforceSpeedrunPlayback() {
+    if (!speedrunState.enabled || !speedrunState.windows.length || speedrunJumpInProgress) {
+        return;
+    }
+
+    const now = Number(videoPlayer.currentTime || 0);
+    const activeIndex = findSpeedrunWindowIndex(now);
+    if (activeIndex >= 0) {
+        if (speedrunState.currentWindowIndex !== activeIndex) {
+            speedrunState.currentWindowIndex = activeIndex;
+            setSpeedrunStatus(`Speedrun active ${activeIndex + 1}/${speedrunState.windows.length}`);
+        }
+
+        const activeWindow = speedrunState.windows[activeIndex];
+        if (now >= (activeWindow.end - 0.02)) {
+            const nextIndex = activeIndex + 1;
+            if (nextIndex < speedrunState.windows.length) {
+                jumpToSpeedrunWindow(nextIndex, true);
+            } else {
+                videoPlayer.pause();
+                disableSpeedrunMode();
+                setSpeedrunStatus('Speedrun complete');
+            }
+        }
+        return;
+    }
+
+    const nextIndex = findNextSpeedrunWindowIndex(now);
+    if (nextIndex >= 0) {
+        jumpToSpeedrunWindow(nextIndex, true);
+    } else {
+        videoPlayer.pause();
+        disableSpeedrunMode();
+        setSpeedrunStatus('Speedrun complete');
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Update theme toggle button text
@@ -352,6 +646,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     restoreCollapsibleStates();
+    applyViewerLayout(loadViewerLayoutPreference());
+    updateSpeedrunControls();
     updatePlayerReelFilters();
     _syncTagFilterInputs();
     if (tagCategoryInput && !String(tagCategoryInput.value || '').trim()) {
@@ -859,6 +1155,7 @@ async function loadRun(runName, sourceElement = null) {
     selectedReelPlayerIds.clear();
     lastLoadedFrame = 0;
     activeSegmentEndTime = null;
+    resetSpeedrunState();
     eventFilterMode = 'all';
     tagFilters = { label: '', category: '', source: 'all' };
     _syncTagFilterInputs();
@@ -891,6 +1188,7 @@ async function loadRun(runName, sourceElement = null) {
     }
 
     viewer.classList.add('active');
+    applyViewerLayout(viewerLayoutMode);
     updateUrlHash();
 
     showLoadingBar();
@@ -906,6 +1204,10 @@ async function loadRun(runName, sourceElement = null) {
 
         // Load events
         await loadEvents(runName);
+        if (thisGeneration !== loadRunGeneration) return;
+
+        // Load speedrun windows for low-action skipping mode
+        await loadSpeedrunWindows(runName);
         if (thisGeneration !== loadRunGeneration) return;
 
         // Load run tags
@@ -3089,6 +3391,8 @@ function setupVideoPlayer() {
             activeSegmentEndTime = null;
         }
 
+        enforceSpeedrunPlayback();
+
         // Highlight current event
         highlightCurrentEvent(videoPlayer.currentTime);
 
@@ -3181,6 +3485,9 @@ function seekToEvent(timestamp) {
 
 // Play a per-player highlight segment directly in the main player.
 function playPlayerSegment(startTime, endTime) {
+    if (speedrunState.enabled) {
+        disableSpeedrunMode();
+    }
     hideClipModal();
     activeSegmentEndTime = Number.isFinite(endTime) ? endTime : null;
     videoPlayer.currentTime = Math.max(0, startTime || 0);
@@ -4384,6 +4691,14 @@ document.addEventListener('keydown', (e) => {
 
         case 'f':
             toggleFullscreen();
+            break;
+
+        case 'x':
+            toggleSpeedrunMode();
+            break;
+
+        case 'v':
+            toggleViewerLayout();
             break;
 
         case 'm':

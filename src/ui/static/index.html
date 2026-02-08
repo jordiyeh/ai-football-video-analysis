@@ -273,8 +273,20 @@
         
         .viewer.active {
             display: grid;
-            grid-template-columns: 2fr 1fr;
             gap: 1.5rem;
+        }
+
+        .viewer.active.layout-split {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+        }
+
+        .viewer.active.layout-stacked {
+            grid-template-columns: 1fr;
+        }
+
+        .viewer.active.layout-stacked .events-panel {
+            max-height: none;
         }
         
         .video-section {
@@ -1336,6 +1348,12 @@
             background: var(--border);
         }
 
+        .playback-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
         .speed-btn {
             background: var(--panel);
             color: var(--text);
@@ -1363,6 +1381,16 @@
             font-size: 0.82rem;
             font-variant-numeric: tabular-nums;
             margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .speedrun-status {
+            font-size: 0.74rem;
+            color: var(--muted);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 0.12rem 0.5rem;
             white-space: nowrap;
         }
 
@@ -2289,7 +2317,9 @@
                 align-items: stretch;
             }
 
-            .viewer.active {
+            .viewer.active,
+            .viewer.active.layout-split,
+            .viewer.active.layout-stacked {
                 grid-template-columns: 1fr;
             }
 
@@ -2837,6 +2867,9 @@
                     <button class="speed-btn active" onclick="setPlaybackSpeed(1)" aria-label="Playback speed 1x">1x</button>
                     <button class="speed-btn" onclick="setPlaybackSpeed(1.5)" aria-label="Playback speed 1.5x">1.5x</button>
                     <button class="speed-btn" onclick="setPlaybackSpeed(2)" aria-label="Playback speed 2x">2x</button>
+                    <button class="playback-btn" id="toggleSpeedrunBtn" onclick="toggleSpeedrunMode()" title="Toggle speedrun playback (X)">Speedrun Off</button>
+                    <button class="playback-btn" id="layoutToggleBtn" onclick="toggleViewerLayout()" title="Toggle multi-view layout (V)">Layout: Split</button>
+                    <span class="speedrun-status" id="speedrunStatus">Speedrun unavailable</span>
                     <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">Fullscreen</button>
                     <span class="playback-time" id="playbackTimeDisplay">0:00 / 0:00</span>
                 </div>
@@ -3273,6 +3306,8 @@
                     <tr><td><kbd>Shift</kbd>+<kbd>&#8592;</kbd> / <kbd>&#8594;</kbd></td><td>Step frame back / forward</td></tr>
                     <tr><td><kbd>J</kbd> / <kbd>K</kbd> / <kbd>L</kbd></td><td>Rewind 10s / Play-pause / Forward 10s</td></tr>
                     <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Decrease / Increase speed</td></tr>
+                    <tr><td><kbd>X</kbd></td><td>Toggle speedrun mode</td></tr>
+                    <tr><td><kbd>V</kbd></td><td>Toggle split/stacked layout</td></tr>
                     <tr><td><kbd>F</kbd></td><td>Toggle fullscreen</td></tr>
                     <tr><td><kbd>M</kbd></td><td>Add event at current time</td></tr>
                     <tr><td><kbd>Escape</kbd></td><td>Close any open modal</td></tr>
