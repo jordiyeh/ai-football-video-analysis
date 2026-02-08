@@ -72,7 +72,7 @@ def main():
     # Ball tracking
     ball_tracks = df[df.object_type == 'ball']
     if len(ball_tracks) > 0:
-        print(f"\n--- Ball Tracking ---")
+        print("\n--- Ball Tracking ---")
         print(f"Ball track points: {len(ball_tracks)}")
         print(f"Unique ball tracks: {ball_tracks.track_id.nunique()}")
         ball_track_lengths = ball_tracks.groupby('track_id').size()

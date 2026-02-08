@@ -82,7 +82,7 @@ def main():
         inconsistent = team_changes[team_changes > 1]
         if len(inconsistent) > 0:
             print(f"⚠ Warning: {len(inconsistent)} tracks have multiple team assignments")
-            print(f"  This may indicate tracking errors or goalkeepers")
+            print("  This may indicate tracking errors or goalkeepers")
         else:
             print("✓ All tracks have consistent team assignments")
 
@@ -126,15 +126,15 @@ def main():
             ratio = max(counts) / min(counts) if min(counts) > 0 else 0
 
             if ratio > 1.5:
-                print(f"\n⚠ Team imbalance detected:")
+                print("\n⚠ Team imbalance detected:")
                 print(f"  {teams[0]}: {counts[0]} players")
                 print(f"  {teams[1]}: {counts[1]} players")
-                print(f"  This may indicate:")
-                print(f"    - Goalkeeper wearing different color")
-                print(f"    - One team more visible in video")
-                print(f"    - Referee being classified as a player")
+                print("  This may indicate:")
+                print("    - Goalkeeper wearing different color")
+                print("    - One team more visible in video")
+                print("    - Referee being classified as a player")
             else:
-                print(f"\n✓ Teams are roughly balanced:")
+                print("\n✓ Teams are roughly balanced:")
                 print(f"  {teams[0]}: {counts[0]} players")
                 print(f"  {teams[1]}: {counts[1]} players")
 

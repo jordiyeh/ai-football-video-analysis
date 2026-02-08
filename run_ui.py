@@ -8,7 +8,6 @@ Usage:
 """
 
 import sys
-from pathlib import Path
 
 if __name__ == "__main__":
     from src.ui.server import main

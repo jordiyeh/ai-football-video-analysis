@@ -7,8 +7,6 @@ Usage:
 """
 
 import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
 
 
 def main():
@@ -39,7 +37,7 @@ def main():
 
     # Ball detections
     ball_df = df[df.object_type == 'ball']
-    print(f"\n--- Ball Detection ---")
+    print("\n--- Ball Detection ---")
     print(f"Ball detected in {len(ball_df)} frames")
     print(f"Ball detection rate: {len(ball_df)/df.frame_idx.nunique()*100:.1f}%")
 
@@ -61,7 +59,7 @@ def main():
     # 3. Export time slices (example: first minute)
     first_min = df[df.timestamp <= 60]
     first_min.to_csv("runs/arlington_fast/first_minute.csv", index=False)
-    print(f"✓ Exported first minute: runs/arlington_fast/first_minute.csv")
+    print("✓ Exported first minute: runs/arlington_fast/first_minute.csv")
 
     # 4. Summary by frame
     summary = df.groupby('frame_idx').agg({
@@ -70,7 +68,7 @@ def main():
         'confidence': 'mean'
     }).reset_index()
     summary.to_csv("runs/arlington_fast/frame_summary.csv", index=False)
-    print(f"✓ Exported frame summary: runs/arlington_fast/frame_summary.csv")
+    print("✓ Exported frame summary: runs/arlington_fast/frame_summary.csv")
 
     print("\n" + "=" * 60)
     print("QUERY EXAMPLES")

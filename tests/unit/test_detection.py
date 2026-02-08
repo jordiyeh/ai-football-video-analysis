@@ -1,6 +1,5 @@
 """Tests for detection system."""
 
-import numpy as np
 from src.vision.detect.yolo import Detection
 
 
