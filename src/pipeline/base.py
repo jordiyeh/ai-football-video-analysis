@@ -389,6 +389,15 @@ class Pipeline:
                 "goal_kick",
             )
         )
+        tactical_count = sum(
+            event_type_counts.get(event_type, 0)
+            for event_type in (
+                "build_up",
+                "pressing",
+                "defending",
+                "transition",
+            )
+        )
 
         video_metadata = context.get("video_metadata", {})
         timeline_path = output_dir / "score_timeline.json"
@@ -441,6 +450,11 @@ class Pipeline:
                 "goals": event_metrics.get("goals", timeline_goals),
                 "passes": event_metrics.get("passes", event_type_counts.get("pass")),
                 "set_pieces": event_metrics.get("set_pieces", set_piece_count),
+                "tactical_events": event_metrics.get("tactical_events", tactical_count),
+                "build_ups": event_metrics.get("tactical_build_ups", event_type_counts.get("build_up")),
+                "pressing_events": event_metrics.get("tactical_pressing", event_type_counts.get("pressing")),
+                "defending_events": event_metrics.get("tactical_defending", event_type_counts.get("defending")),
+                "transition_events": event_metrics.get("tactical_transitions", event_type_counts.get("transition")),
                 "kickoffs": event_metrics.get("kickoffs", event_type_counts.get("kickoff")),
                 "throw_ins": event_metrics.get("throw_ins", event_type_counts.get("throw_in")),
                 "corner_kicks": event_metrics.get("corner_kicks", event_type_counts.get("corner_kick")),

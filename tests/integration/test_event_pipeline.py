@@ -641,3 +641,140 @@ class TestEventPipelineIntegration:
         assert counts["passes"] >= 1
         assert counts["set_pieces"] >= 1
         assert counts["kickoffs"] >= 1
+
+    def test_pipeline_writes_tactical_events(self, tmp_path):
+        """Event stage should emit tactical events into events.jsonl and summary counts."""
+        import sys
+        import types
+
+        if "click" not in sys.modules:
+            click_stub = types.ModuleType("click")
+
+            def _decorator(*_args, **_kwargs):
+                def _wrapper(fn):
+                    return fn
+                return _wrapper
+
+            click_stub.command = _decorator
+            click_stub.option = _decorator
+            click_stub.Path = lambda **_kwargs: str
+            sys.modules["click"] = click_stub
+
+        from src.cli import EventDetectionStage
+        from src.config.schemas import PipelineConfig
+        from src.pipeline.base import Pipeline, PipelineStage
+
+        fps = 10.0
+        tracks = _build_pass_and_kickoff_tracks(fps=fps)
+
+        possession_timeline = []
+        for frame_idx in range(0, 14):
+            possession_timeline.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp": frame_idx / fps,
+                    "owner_team": "ours",
+                    "owner_track_id": 11 if frame_idx < 8 else 12,
+                    "owner_norm_x": 0.20 + (0.012 * frame_idx),
+                    "owner_norm_y": 0.72 - (0.010 * frame_idx),
+                }
+            )
+        for frame_idx in range(14, 26):
+            possession_timeline.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp": frame_idx / fps,
+                    "owner_team": "opponent",
+                    "owner_track_id": 31,
+                    "owner_norm_x": 0.42 + (0.007 * (frame_idx - 14)),
+                    "owner_norm_y": 0.52 + (0.004 * (frame_idx - 14)),
+                }
+            )
+
+        pressing_timeline = []
+        for frame_idx in range(2, 11):
+            pressing_timeline.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp": frame_idx / fps,
+                    "attacking_team": "ours",
+                    "defending_team": "opponent",
+                    "carrier_track_id": 11 if frame_idx < 8 else 12,
+                    "nearest_distance_norm": 0.05,
+                    "defenders_within_radius": 3,
+                    "pressure_score": 0.81,
+                    "high_press": True,
+                }
+            )
+        for frame_idx in range(14, 28):
+            pressing_timeline.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp": frame_idx / fps,
+                    "attacking_team": "opponent",
+                    "defending_team": "ours",
+                    "carrier_track_id": 31,
+                    "nearest_distance_norm": 0.08,
+                    "defenders_within_radius": 2,
+                    "pressure_score": 0.47,
+                    "high_press": False,
+                }
+            )
+
+        class SeedTracksStage(PipelineStage):
+            def run(self, context):
+                context["video_metadata"] = {
+                    "fps": fps,
+                    "duration": 4.0,
+                    "total_frames": 40,
+                    "width": 1000,
+                    "height": 600,
+                }
+                context["tracks"] = tracks
+                return context
+
+        class SeedTeamAnalyticsStage(PipelineStage):
+            def run(self, context):
+                context["team_analytics"] = {
+                    "possession_timeline": possession_timeline,
+                    "pressing_timeline": pressing_timeline,
+                }
+                return context
+
+        config = PipelineConfig()
+        config.events.detect_shots = False
+        config.events.detect_goals = False
+        config.events.detect_passes = False
+        config.events.detect_set_pieces = False
+        config.events.detect_tactical = True
+        config.events.interpolate_ball = False
+        config.team_analytics.possession_min_segment_frames = 4
+        config.team_analytics.high_press_min_frames = 8
+        config.team_analytics.high_press_threshold = 0.65
+        config.team_analytics.pressure_radius_norm = 0.10
+
+        pipeline = Pipeline(config)
+        pipeline.add_stage(SeedTracksStage("seed_tracks", config))
+        pipeline.add_stage(SeedTeamAnalyticsStage("seed_team_analytics", config))
+        pipeline.add_stage(EventDetectionStage(config))
+
+        video_path = tmp_path / "input.mp4"
+        video_path.touch()
+        output_dir = tmp_path / "run_tactical"
+        pipeline.run(video_path, output_dir)
+
+        with open(output_dir / "events.jsonl") as f:
+            events = [json.loads(line) for line in f if line.strip()]
+
+        event_types = {event["event_type"] for event in events}
+        assert {"build_up", "pressing", "defending", "transition"}.issubset(event_types)
+
+        with open(output_dir / "summary.json") as f:
+            summary = json.load(f)
+
+        counts = summary["counts"]
+        assert counts["tactical_events"] >= 4
+        assert counts["build_ups"] >= 1
+        assert counts["pressing_events"] >= 1
+        assert counts["defending_events"] >= 1
+        assert counts["transition_events"] >= 1

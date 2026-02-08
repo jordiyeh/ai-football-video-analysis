@@ -34,3 +34,20 @@ def test_set_piece_event_metadata_is_schema_versioned() -> None:
     assert event.metadata["event_family"] == "set_piece"
     assert event.metadata["event_type"] == "corner_kick"
     assert event.metadata["set_piece_type"] == "corner_kick"
+
+
+def test_tactical_event_metadata_is_schema_versioned() -> None:
+    """Tactical subtypes should include canonical tactical metadata."""
+    event = Event(
+        event_type="transition",
+        frame_idx=31,
+        timestamp=1.03,
+        confidence=0.66,
+        metadata={"team_id": "ours"},
+    )
+
+    assert event.metadata is not None
+    assert event.metadata["schema_version"] == EVENT_METADATA_SCHEMA_VERSION
+    assert event.metadata["event_family"] == "tactical"
+    assert event.metadata["event_type"] == "transition"
+    assert event.metadata["tactical_type"] == "transition"

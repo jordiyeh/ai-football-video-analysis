@@ -29,7 +29,7 @@
 
 ### Phase 3: Tactical Event Classification
 
-- [ ] [HIGH] Step 12 — Tactical event classification: Create `src/events/tactical.py` for build-up, pressing, defending, and transition events with confidence/provenance in `events.jsonl`. Test: `pytest tests/unit -q -k "tactical or pressing or team_analytics"`
+- [x] [HIGH] Step 12 — Tactical event classification: Create `src/events/tactical.py` for build-up, pressing, defending, and transition events with confidence/provenance in `events.jsonl`. Test: `pytest tests/unit -q -k "tactical or pressing or team_analytics"`
 
 ### Phase 4: Tagging and Annotation System
 

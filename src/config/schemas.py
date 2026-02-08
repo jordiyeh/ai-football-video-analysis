@@ -300,6 +300,7 @@ class EventsConfig(BaseModel):
     detect_goals: bool = True
     detect_passes: bool = False  # Phase 2+
     detect_set_pieces: bool = True
+    detect_tactical: bool = True
     shot_velocity_threshold: float = 8.0  # pixels/frame (lower = more sensitive)
     goal_confidence_threshold: float = 0.5  # Lower threshold for more goal candidates
     min_shot_duration_frames: int = 2  # Minimum frames for high-speed segment

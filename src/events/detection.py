@@ -25,11 +25,15 @@ EventType = Literal[
     "corner_kick",
     "free_kick",
     "goal_kick",
+    "build_up",
+    "pressing",
+    "defending",
+    "transition",
     "tackle",
     "other",
 ]
 
-EventFamily = Literal["shot", "goal", "pass", "set_piece", "defensive", "other"]
+EventFamily = Literal["shot", "goal", "pass", "set_piece", "tactical", "defensive", "other"]
 
 # Schema for per-event metadata payload, including pass/set-piece families.
 EVENT_METADATA_SCHEMA_VERSION = "1.0"
@@ -37,6 +41,7 @@ EVENT_METADATA_SCHEMA_VERSION = "1.0"
 SET_PIECE_EVENT_TYPES = frozenset(
     {"set_piece", "kickoff", "throw_in", "corner_kick", "free_kick", "goal_kick"}
 )
+TACTICAL_EVENT_TYPES = frozenset({"build_up", "pressing", "defending", "transition"})
 
 EVENT_TYPE_TO_FAMILY: dict[str, EventFamily] = {
     "shot": "shot",
@@ -48,6 +53,10 @@ EVENT_TYPE_TO_FAMILY: dict[str, EventFamily] = {
     "corner_kick": "set_piece",
     "free_kick": "set_piece",
     "goal_kick": "set_piece",
+    "build_up": "tactical",
+    "pressing": "tactical",
+    "defending": "tactical",
+    "transition": "tactical",
     "tackle": "defensive",
     "other": "other",
 }
@@ -81,6 +90,12 @@ def normalize_event_metadata(
             set_piece_type = event_type
         if set_piece_type:
             normalized["set_piece_type"] = str(set_piece_type)
+    elif event_family == "tactical":
+        tactical_type = normalized.get("tactical_type")
+        if event_type not in {"tactical", "other"} and not tactical_type:
+            tactical_type = event_type
+        if tactical_type:
+            normalized["tactical_type"] = str(tactical_type)
 
     return normalized
 
@@ -103,7 +118,7 @@ class Event:
 
     def __post_init__(self) -> None:
         """Ensure pass/set-piece events carry schema-versioned metadata."""
-        if self.event_family in {"pass", "set_piece"}:
+        if self.event_family in {"pass", "set_piece", "tactical"}:
             self.metadata = normalize_event_metadata(self.event_type, self.metadata)
 
 

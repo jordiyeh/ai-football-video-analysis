@@ -36,6 +36,9 @@ __all__ = [
     "SetPieceInferenceConfig",
     "SetPieceInferencer",
     "infer_set_piece_events",
+    "TacticalInferenceConfig",
+    "TacticalInferencer",
+    "infer_tactical_events",
 ]
 
 _SYMBOL_TO_MODULE = {
@@ -71,6 +74,9 @@ _SYMBOL_TO_MODULE = {
     "SetPieceInferenceConfig": "src.events.set_pieces",
     "SetPieceInferencer": "src.events.set_pieces",
     "infer_set_piece_events": "src.events.set_pieces",
+    "TacticalInferenceConfig": "src.events.tactical",
+    "TacticalInferencer": "src.events.tactical",
+    "infer_tactical_events": "src.events.tactical",
 }
 
 

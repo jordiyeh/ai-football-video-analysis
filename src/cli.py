@@ -1727,7 +1727,7 @@ class TeamAnalyticsStage(PipelineStage):
 
 
 class EventDetectionStage(PipelineStage):
-    """Stage E: Detect match events (shots/goals/passes/set-pieces)."""
+    """Stage E: Detect match events (shots/goals/passes/set-pieces/tactical)."""
 
     _SET_PIECE_EVENT_TYPES = (
         "set_piece",
@@ -1736,6 +1736,12 @@ class EventDetectionStage(PipelineStage):
         "corner_kick",
         "free_kick",
         "goal_kick",
+    )
+    _TACTICAL_EVENT_TYPES = (
+        "build_up",
+        "pressing",
+        "defending",
+        "transition",
     )
 
     def __init__(self, config: PipelineConfig):
@@ -1764,6 +1770,11 @@ class EventDetectionStage(PipelineStage):
         """Return total set-piece events including subtype event types."""
         return int(sum(event_type_counts.get(event_type, 0) for event_type in cls._SET_PIECE_EVENT_TYPES))
 
+    @classmethod
+    def _tactical_count(cls, event_type_counts: dict[str, int]) -> int:
+        """Return total tactical events including all tactical subtypes."""
+        return int(sum(event_type_counts.get(event_type, 0) for event_type in cls._TACTICAL_EVENT_TYPES))
+
     @staticmethod
     def _pass_inference_config(config: PipelineConfig) -> dict[str, Any]:
         """Build pass inference configuration from team analytics defaults."""
@@ -1777,6 +1788,25 @@ class EventDetectionStage(PipelineStage):
             "pass_max_gap_seconds": float(team_cfg.pass_max_gap_seconds),
         }
 
+    @staticmethod
+    def _tactical_inference_config(config: PipelineConfig, fps: float) -> dict[str, Any]:
+        """Build tactical inference thresholds from team-analytics defaults."""
+        team_cfg = config.team_analytics
+        high_press_frames = max(1, int(team_cfg.high_press_min_frames))
+
+        return {
+            "build_up_min_frames": max(6, int(team_cfg.possession_min_segment_frames) * 2),
+            "build_up_min_progress_norm": 0.10,
+            "build_up_min_carrier_changes": 1,
+            "pressing_min_frames": max(3, high_press_frames // 2),
+            "pressing_min_pressure_score": float(team_cfg.high_press_threshold),
+            "defending_min_frames": max(4, high_press_frames),
+            "defending_max_nearest_distance_norm": float(team_cfg.pressure_radius_norm) * 1.35,
+            "defending_min_defenders_within_radius": 1.0,
+            "transition_max_gap_frames": max(2, int(round(max(1.0, fps) * 1.2))),
+            "transition_min_displacement_norm": 0.08,
+        }
+
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         """Detect match events from trajectory + tracking context."""
         from src.events import (
@@ -1784,6 +1814,7 @@ class EventDetectionStage(PipelineStage):
             EventDetector,
             infer_pass_events,
             infer_set_piece_events,
+            infer_tactical_events,
         )
 
         output_dir = Path(context["output_dir"])
@@ -1819,6 +1850,11 @@ class EventDetectionStage(PipelineStage):
                     "goals": int(event_type_counts.get("goal", 0)),
                     "passes": int(event_type_counts.get("pass", 0)),
                     "set_pieces": self._set_piece_count(event_type_counts),
+                    "tactical_events": self._tactical_count(event_type_counts),
+                    "tactical_build_ups": int(event_type_counts.get("build_up", 0)),
+                    "tactical_pressing": int(event_type_counts.get("pressing", 0)),
+                    "tactical_defending": int(event_type_counts.get("defending", 0)),
+                    "tactical_transitions": int(event_type_counts.get("transition", 0)),
                     "kickoffs": int(event_type_counts.get("kickoff", 0)),
                     "throw_ins": int(event_type_counts.get("throw_in", 0)),
                     "corner_kicks": int(event_type_counts.get("corner_kick", 0)),
@@ -1936,8 +1972,38 @@ class EventDetectionStage(PipelineStage):
             )
             self.console.print(f"Detected {len(set_piece_events)} potential set-pieces")
 
+        team_analytics = context.get("team_analytics")
+        if not isinstance(team_analytics, dict):
+            team_analytics_path = output_dir / "team_analytics.json"
+            if team_analytics_path.exists():
+                try:
+                    with open(team_analytics_path) as f:
+                        team_analytics = json.load(f)
+                except Exception:
+                    team_analytics = {}
+            else:
+                team_analytics = {}
+
+        tactical_events = []
+        if self.config.events.detect_tactical:
+            tactical_events = infer_tactical_events(
+                tracks=tracks,
+                team_analytics=team_analytics,
+                fps=video_metadata["fps"],
+                config=self._tactical_inference_config(self.config, fps=video_metadata["fps"]),
+            )
+            tactical_counts = self._event_type_counts(tactical_events)
+            self.console.print(
+                "Detected "
+                f"{len(tactical_events)} tactical events "
+                f"(build_up={int(tactical_counts.get('build_up', 0))}, "
+                f"pressing={int(tactical_counts.get('pressing', 0))}, "
+                f"defending={int(tactical_counts.get('defending', 0))}, "
+                f"transition={int(tactical_counts.get('transition', 0))})"
+            )
+
         # Combine all events
-        all_events = shot_events + goal_events + pass_events + set_piece_events
+        all_events = shot_events + goal_events + pass_events + set_piece_events + tactical_events
         all_events = sorted(all_events, key=lambda e: e.timestamp)
 
         # Save events to JSONL
@@ -2004,6 +2070,11 @@ class EventDetectionStage(PipelineStage):
             "goals": int(event_type_counts.get("goal", len(goal_events))),
             "passes": int(event_type_counts.get("pass", len(pass_events))),
             "set_pieces": self._set_piece_count(event_type_counts),
+            "tactical_events": self._tactical_count(event_type_counts),
+            "tactical_build_ups": int(event_type_counts.get("build_up", 0)),
+            "tactical_pressing": int(event_type_counts.get("pressing", 0)),
+            "tactical_defending": int(event_type_counts.get("defending", 0)),
+            "tactical_transitions": int(event_type_counts.get("transition", 0)),
             "kickoffs": int(event_type_counts.get("kickoff", 0)),
             "throw_ins": int(event_type_counts.get("throw_in", 0)),
             "corner_kicks": int(event_type_counts.get("corner_kick", 0)),
