@@ -1075,6 +1075,111 @@
             opacity: 0.85;
         }
 
+        .tags-section {
+            margin-top: 1rem;
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+        }
+
+        .tags-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.6rem;
+        }
+
+        .tags-header h4 {
+            margin: 0;
+            color: var(--accent);
+            font-size: 0.95rem;
+        }
+
+        .tags-create-controls {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr 0.6fr 0.6fr 1.2fr auto;
+            gap: 0.45rem;
+            margin-bottom: 0.55rem;
+        }
+
+        .tags-filter-controls {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1fr auto auto;
+            gap: 0.45rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .tags-create-controls .form-input,
+        .tags-filter-controls .form-input {
+            font-size: 0.76rem;
+            padding: 0.36rem 0.5rem;
+        }
+
+        .tags-list {
+            max-height: 210px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.35rem;
+            background: var(--panel-soft);
+        }
+
+        .tag-item {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem 0.55rem;
+            margin-bottom: 0.4rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tag-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .tag-item:hover {
+            border-color: var(--accent);
+            transform: translateX(2px);
+        }
+
+        .tag-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .tag-item-title {
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.78rem;
+        }
+
+        .tag-item-meta {
+            color: var(--muted);
+            font-size: 0.72rem;
+            line-height: 1.35;
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+            border-radius: 999px;
+            padding: 0.04rem 0.4rem;
+            margin-right: 0.3rem;
+            font-size: 0.68rem;
+            color: var(--muted);
+        }
+
+        .tag-item-actions {
+            margin-top: 0.3rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+
         /* Modal styles */
         .modal {
             display: none;
@@ -2231,6 +2336,11 @@
                 justify-content: center;
             }
 
+            .tags-create-controls,
+            .tags-filter-controls {
+                grid-template-columns: 1fr;
+            }
+
             .filter-separator {
                 display: none;
             }
@@ -2816,6 +2926,39 @@
                     <button class="filter-btn" data-filter="rejected" onclick="setEventFilter('rejected')" aria-label="Show rejected events">Rejected <span class="filter-count" id="filterCountRejected">0</span></button>
                 </div>
                 <div id="eventsList"></div>
+
+                <div class="tags-section">
+                    <div class="tags-header">
+                        <h4>Tags</h4>
+                        <span class="panel-note">Manual annotations scoped to this run</span>
+                    </div>
+
+                    <div class="tags-create-controls">
+                        <input id="tagLabelInput" type="text" class="form-input" placeholder="Label (required)">
+                        <input id="tagCategoryInput" type="text" class="form-input" value="general" placeholder="Category">
+                        <input id="tagTrackInput" type="number" class="form-input" placeholder="Track ID">
+                        <input id="tagConfidenceInput" type="number" min="0" max="1" step="0.05" class="form-input" placeholder="Conf">
+                        <input id="tagNotesInput" type="text" class="form-input" placeholder="Notes (optional)">
+                        <button class="identity-btn primary" onclick="addManualTagAtCurrentTime()">+ Tag @ Time</button>
+                    </div>
+
+                    <div class="tags-filter-controls">
+                        <input id="tagFilterLabel" type="text" class="form-input" placeholder="Filter by label">
+                        <input id="tagFilterCategory" type="text" class="form-input" placeholder="Filter by category">
+                        <select id="tagFilterSource" class="form-input">
+                            <option value="all">Source: All</option>
+                            <option value="manual">Source: Manual</option>
+                            <option value="auto">Source: Auto</option>
+                            <option value="imported">Source: Imported</option>
+                        </select>
+                        <button class="identity-btn" onclick="applyTagFilters()">Apply</button>
+                        <button class="identity-btn" onclick="resetTagFilters()">Reset</button>
+                    </div>
+
+                    <div id="tagsList" class="tags-list">
+                        <p class="loading">Select a run to load tags</p>
+                    </div>
+                </div>
                 </div>
 
                 <div class="team-analytics-section">

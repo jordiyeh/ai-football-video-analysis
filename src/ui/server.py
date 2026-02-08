@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -146,6 +146,38 @@ class SetRunTeamsBody(BaseModel):
 class RemapRunTeamsBody(BaseModel):
     """Request body for swapping cluster-to-team mapping."""
     pass
+
+
+class CreateTagBody(BaseModel):
+    """Request body for creating a run tag annotation."""
+    label: str
+    category: str = "general"
+    start_time: float | None = None
+    end_time: float | None = None
+    frame_idx: int | None = None
+    track_id: int | None = None
+    player_id: int | None = None
+    team_id: int | None = None
+    confidence: float | None = None
+    source: Literal["manual", "auto", "imported"] = "manual"
+    notes: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class UpdateTagBody(BaseModel):
+    """Request body for updating one or more run tag fields."""
+    label: str | None = None
+    category: str | None = None
+    start_time: float | None = None
+    end_time: float | None = None
+    frame_idx: int | None = None
+    track_id: int | None = None
+    player_id: int | None = None
+    team_id: int | None = None
+    confidence: float | None = None
+    source: Literal["manual", "auto", "imported"] | None = None
+    notes: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 def _utc_now_iso() -> str:
@@ -1144,6 +1176,103 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             "players": players,
             "summary": reels_data.get("summary", {}),
             "count": len(players),
+        }
+
+    def ensure_run_exists(run_name: str) -> Path:
+        """Resolve run path and raise HTTP 404 when missing."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run_path
+
+    def _normalize_required_tag_text(value: str, field_name: str) -> str:
+        """Trim and validate required tag fields."""
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise HTTPException(status_code=400, detail=f"{field_name} is required")
+        return normalized
+
+    def _normalize_optional_tag_text(value: str | None) -> str | None:
+        """Trim optional string fields; collapse empty values to None."""
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    def _validate_tag_confidence(confidence: float | None) -> float | None:
+        """Validate optional confidence values in [0, 1]."""
+        if confidence is None:
+            return None
+        parsed = float(confidence)
+        if parsed < 0.0 or parsed > 1.0:
+            raise HTTPException(status_code=400, detail="confidence must be between 0 and 1")
+        return parsed
+
+    def _build_tag_name_maps(db: Any) -> tuple[dict[int, str], dict[int, str]]:
+        """Build player/team display-name lookup maps for tag payload enrichment."""
+        player_names: dict[int, str] = {}
+        for player in db.list_players():
+            name = _normalize_optional_tag_text(player.name)
+            if name is None:
+                continue
+            player_names[int(player.player_id)] = name
+
+        team_names: dict[int, str] = {}
+        for team in db.list_teams():
+            name = _normalize_optional_tag_text(team.name)
+            if name is None:
+                continue
+            team_names[int(team.team_id)] = name
+
+        return player_names, team_names
+
+    def _serialize_tag_payload(
+        tag: Any,
+        *,
+        player_names: dict[int, str] | None = None,
+        team_names: dict[int, str] | None = None,
+    ) -> dict[str, Any]:
+        """Serialize tag model and enrich with optional player/team names."""
+        payload = tag.model_dump() if hasattr(tag, "model_dump") else dict(tag)
+        player_names = player_names or {}
+        team_names = team_names or {}
+
+        player_id_raw = payload.get("player_id")
+        team_id_raw = payload.get("team_id")
+
+        try:
+            player_id = int(player_id_raw) if player_id_raw is not None else None
+        except (TypeError, ValueError):
+            player_id = None
+
+        try:
+            team_id = int(team_id_raw) if team_id_raw is not None else None
+        except (TypeError, ValueError):
+            team_id = None
+
+        payload["player_name"] = player_names.get(player_id) if player_id is not None else None
+        payload["team_name"] = team_names.get(team_id) if team_id is not None else None
+        return payload
+
+    def _build_tags_filter_payload(
+        *,
+        label: str | None,
+        category: str | None,
+        source: str | None,
+        player_id: int | None,
+        team_id: int | None,
+        min_time: float | None,
+        max_time: float | None,
+    ) -> dict[str, Any]:
+        """Normalize filter metadata returned by tag-list endpoint."""
+        return {
+            "label": label,
+            "category": category,
+            "source": source,
+            "player_id": player_id,
+            "team_id": team_id,
+            "min_time": min_time,
+            "max_time": max_time,
         }
 
     def get_identity_edits_path(run_path: Path) -> Path:
@@ -3762,6 +3891,212 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         merged_events = merge_events_with_confirmations(events, confirmations)
 
         return {"events": merged_events, "count": len(merged_events)}
+
+    @app.get("/api/runs/{run_name}/tags")
+    async def list_run_tags(
+        run_name: str,
+        label: str | None = None,
+        category: str | None = None,
+        source: str | None = None,
+        player_id: int | None = None,
+        team_id: int | None = None,
+        min_time: float | None = None,
+        max_time: float | None = None,
+    ):
+        """List run tags with optional filters."""
+        ensure_run_exists(run_name)
+
+        normalized_label = _normalize_optional_tag_text(label)
+        normalized_category = _normalize_optional_tag_text(category)
+        normalized_source = _normalize_optional_tag_text(source)
+        if normalized_source is not None and normalized_source not in {"manual", "auto", "imported"}:
+            raise HTTPException(status_code=400, detail="source must be manual, auto, or imported")
+
+        db_path = get_player_db_path()
+        if not db_path.exists():
+            return {
+                "schema_version": "1.0",
+                "run_name": run_name,
+                "tags": [],
+                "count": 0,
+                "filters": _build_tags_filter_payload(
+                    label=normalized_label,
+                    category=normalized_category,
+                    source=normalized_source,
+                    player_id=player_id,
+                    team_id=team_id,
+                    min_time=min_time,
+                    max_time=max_time,
+                ),
+            }
+
+        try:
+            from src.identity import PlayerDatabase
+
+            with PlayerDatabase(db_path) as db:
+                tags = db.list_tags(
+                    run_name=run_name,
+                    label=normalized_label,
+                    category=normalized_category,
+                    source=normalized_source,
+                    player_id=player_id,
+                    team_id=team_id,
+                    min_time=min_time,
+                    max_time=max_time,
+                )
+                player_names, team_names = _build_tag_name_maps(db)
+
+            payload = [
+                _serialize_tag_payload(tag, player_names=player_names, team_names=team_names)
+                for tag in tags
+            ]
+            return {
+                "schema_version": "1.0",
+                "run_name": run_name,
+                "tags": payload,
+                "count": len(payload),
+                "filters": _build_tags_filter_payload(
+                    label=normalized_label,
+                    category=normalized_category,
+                    source=normalized_source,
+                    player_id=player_id,
+                    team_id=team_id,
+                    min_time=min_time,
+                    max_time=max_time,
+                ),
+            }
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Identity module not available")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/api/runs/{run_name}/tags")
+    async def create_run_tag(run_name: str, body: CreateTagBody):
+        """Create a manual/auto/imported tag annotation for one run."""
+        ensure_run_exists(run_name)
+
+        label = _normalize_required_tag_text(body.label, "label")
+        category = _normalize_required_tag_text(body.category, "category")
+        notes = _normalize_optional_tag_text(body.notes)
+        confidence = _validate_tag_confidence(body.confidence)
+
+        db_path = get_player_db_path()
+        try:
+            from src.identity import PlayerDatabase
+
+            with PlayerDatabase(db_path) as db:
+                tag = db.create_tag(
+                    run_name=run_name,
+                    label=label,
+                    category=category,
+                    start_time=body.start_time,
+                    end_time=body.end_time,
+                    frame_idx=body.frame_idx,
+                    track_id=body.track_id,
+                    player_id=body.player_id,
+                    team_id=body.team_id,
+                    confidence=confidence,
+                    source=body.source,
+                    notes=notes,
+                    metadata=body.metadata,
+                )
+                player_names, team_names = _build_tag_name_maps(db)
+
+            return {
+                "success": True,
+                "tag": _serialize_tag_payload(tag, player_names=player_names, team_names=team_names),
+            }
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Identity module not available")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.patch("/api/runs/{run_name}/tags/{tag_id}")
+    async def update_run_tag(run_name: str, tag_id: int, body: UpdateTagBody):
+        """Update one tag annotation by id."""
+        ensure_run_exists(run_name)
+        db_path = get_player_db_path()
+        if not db_path.exists():
+            raise HTTPException(status_code=404, detail="Tag not found")
+
+        try:
+            from src.identity import PlayerDatabase
+
+            with PlayerDatabase(db_path) as db:
+                existing = db.get_tag(tag_id)
+                if existing is None or existing.run_name != run_name:
+                    raise HTTPException(status_code=404, detail="Tag not found")
+
+                updates: dict[str, Any] = {}
+                provided = set(body.model_fields_set)
+
+                if "label" in provided:
+                    if body.label is None:
+                        raise HTTPException(status_code=400, detail="label cannot be null")
+                    updates["label"] = _normalize_required_tag_text(body.label, "label")
+                if "category" in provided:
+                    if body.category is None:
+                        raise HTTPException(status_code=400, detail="category cannot be null")
+                    updates["category"] = _normalize_required_tag_text(body.category, "category")
+                if "source" in provided:
+                    if body.source is None:
+                        raise HTTPException(status_code=400, detail="source cannot be null")
+                    updates["source"] = body.source
+
+                if "start_time" in provided:
+                    updates["start_time"] = body.start_time
+                if "end_time" in provided:
+                    updates["end_time"] = body.end_time
+                if "frame_idx" in provided:
+                    updates["frame_idx"] = body.frame_idx
+                if "track_id" in provided:
+                    updates["track_id"] = body.track_id
+                if "player_id" in provided:
+                    updates["player_id"] = body.player_id
+                if "team_id" in provided:
+                    updates["team_id"] = body.team_id
+                if "confidence" in provided:
+                    updates["confidence"] = _validate_tag_confidence(body.confidence)
+                if "notes" in provided:
+                    updates["notes"] = _normalize_optional_tag_text(body.notes)
+                if "metadata" in provided:
+                    updates["metadata"] = body.metadata
+
+                updated = db.update_tag(tag_id, **updates)
+                if updated is None:
+                    raise HTTPException(status_code=404, detail="Tag not found")
+                player_names, team_names = _build_tag_name_maps(db)
+
+            return {
+                "success": True,
+                "tag": _serialize_tag_payload(updated, player_names=player_names, team_names=team_names),
+            }
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Identity module not available")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/api/runs/{run_name}/tags/{tag_id}")
+    async def delete_run_tag(run_name: str, tag_id: int):
+        """Delete one tag annotation by id."""
+        ensure_run_exists(run_name)
+        db_path = get_player_db_path()
+        if not db_path.exists():
+            raise HTTPException(status_code=404, detail="Tag not found")
+
+        try:
+            from src.identity import PlayerDatabase
+
+            with PlayerDatabase(db_path) as db:
+                tag = db.get_tag(tag_id)
+                if tag is None or tag.run_name != run_name:
+                    raise HTTPException(status_code=404, detail="Tag not found")
+                deleted = db.delete_tag(tag_id)
+                if not deleted:
+                    raise HTTPException(status_code=404, detail="Tag not found")
+            return {"success": True, "tag_id": tag_id}
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Identity module not available")
 
     @app.get("/api/runs/{run_name}/timeline")
     async def get_score_timeline(run_name: str):

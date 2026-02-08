@@ -1,6 +1,7 @@
 // Global state
 let currentRun = null;
 let events = [];
+let tags = [];
 let timeline = null;
 let tracks = [];
 let tracksByFrame = {};
@@ -36,6 +37,12 @@ let pipelineJobsPollHandle = null;
 let pipelineJobsSnapshot = '';
 let currentPlaybackSpeed = 1;
 let eventFilterMode = 'all';
+let tagFilters = {
+    label: '',
+    category: '',
+    source: 'all'
+};
+let tagsLoadError = '';
 let allRunsData = [];
 let loadRunGeneration = 0;
 let lastHighlightedEventIdx = -1;
@@ -83,6 +90,7 @@ const viewer = document.getElementById('viewer');
 const videoPlayer = document.getElementById('videoPlayer');
 const videoSource = document.getElementById('videoSource');
 const eventsList = document.getElementById('eventsList');
+const tagsList = document.getElementById('tagsList');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const timelineProgress = document.getElementById('timelineProgress');
 const timelineBar = document.getElementById('timelineBar');
@@ -136,6 +144,14 @@ const pipelineNoOverlay = document.getElementById('pipelineNoOverlay');
 const pipelineSubmitBtn = document.getElementById('pipelineSubmitBtn');
 const pipelineStudioStatus = document.getElementById('pipelineStudioStatus');
 const pipelineJobsList = document.getElementById('pipelineJobsList');
+const tagLabelInput = document.getElementById('tagLabelInput');
+const tagCategoryInput = document.getElementById('tagCategoryInput');
+const tagTrackInput = document.getElementById('tagTrackInput');
+const tagConfidenceInput = document.getElementById('tagConfidenceInput');
+const tagNotesInput = document.getElementById('tagNotesInput');
+const tagFilterLabel = document.getElementById('tagFilterLabel');
+const tagFilterCategory = document.getElementById('tagFilterCategory');
+const tagFilterSource = document.getElementById('tagFilterSource');
 const ctx = overlayCanvas.getContext('2d');
 
 // Restore theme from localStorage immediately
@@ -337,6 +353,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     restoreCollapsibleStates();
     updatePlayerReelFilters();
+    _syncTagFilterInputs();
+    if (tagCategoryInput && !String(tagCategoryInput.value || '').trim()) {
+        tagCategoryInput.value = 'general';
+    }
     loadPipelineConfigs();
     loadPipelineJobs(true);
     loadPipelineTeamSelectors();
@@ -816,6 +836,8 @@ async function loadRun(runName, sourceElement = null) {
     currentRun = runName;
 
     // Reset state
+    tags = [];
+    tagsLoadError = '';
     tracks = [];
     tracksByFrame = {};
     playerReels = [];
@@ -838,6 +860,8 @@ async function loadRun(runName, sourceElement = null) {
     lastLoadedFrame = 0;
     activeSegmentEndTime = null;
     eventFilterMode = 'all';
+    tagFilters = { label: '', category: '', source: 'all' };
+    _syncTagFilterInputs();
     eventPage = 0;
     assignmentPage = 0;
     suggestionPage = 0;
@@ -852,6 +876,7 @@ async function loadRun(runName, sourceElement = null) {
     renderMatchStats();
     renderRunSummary();
     renderVisualizationPanel();
+    renderTags();
 
     // Update UI
     document.querySelectorAll('.run-item').forEach(item => item.classList.remove('active'));
@@ -881,6 +906,10 @@ async function loadRun(runName, sourceElement = null) {
 
         // Load events
         await loadEvents(runName);
+        if (thisGeneration !== loadRunGeneration) return;
+
+        // Load run tags
+        await loadTags(runName);
         if (thisGeneration !== loadRunGeneration) return;
 
         // Load team analytics
@@ -942,6 +971,253 @@ async function loadEvents(runName) {
         console.error('Error loading events:', error);
         events = [];
         eventsList.innerHTML = '<p class="loading">No events found</p>';
+    }
+}
+
+function _normalizeTagFiltersFromInputs() {
+    tagFilters = {
+        label: tagFilterLabel ? String(tagFilterLabel.value || '').trim() : '',
+        category: tagFilterCategory ? String(tagFilterCategory.value || '').trim() : '',
+        source: tagFilterSource ? String(tagFilterSource.value || 'all') : 'all'
+    };
+}
+
+function _syncTagFilterInputs() {
+    if (tagFilterLabel) tagFilterLabel.value = tagFilters.label || '';
+    if (tagFilterCategory) tagFilterCategory.value = tagFilters.category || '';
+    if (tagFilterSource) tagFilterSource.value = tagFilters.source || 'all';
+}
+
+function _tagTimeLabel(tag) {
+    const start = Number(tag?.start_time);
+    const end = Number(tag?.end_time);
+    const hasStart = Number.isFinite(start);
+    const hasEnd = Number.isFinite(end);
+    if (hasStart && hasEnd && Math.abs(end - start) >= 0.01) {
+        return `${formatTime(start)} - ${formatTime(end)}`;
+    }
+    if (hasStart) return formatTime(start);
+    if (hasEnd) return formatTime(end);
+    return 'n/a';
+}
+
+function _tagSeekTime(tag) {
+    const start = Number(tag?.start_time);
+    if (Number.isFinite(start)) return start;
+    const end = Number(tag?.end_time);
+    if (Number.isFinite(end)) return end;
+    return null;
+}
+
+function renderTags() {
+    if (!tagsList) return;
+    if (!currentRun) {
+        tagsList.innerHTML = '<p class="loading">Select a run to load tags</p>';
+        return;
+    }
+    if (tagsLoadError) {
+        tagsList.innerHTML = `<p class="loading">${escapeHtml(tagsLoadError)}</p>`;
+        return;
+    }
+    if (!Array.isArray(tags) || tags.length === 0) {
+        tagsList.innerHTML = '<p class="loading">No tags match current filters</p>';
+        return;
+    }
+
+    const html = tags.map((tag) => {
+        const tagId = Number(tag.tag_id || 0);
+        const label = escapeHtml(String(tag.label || 'tag'));
+        const category = escapeHtml(String(tag.category || 'general'));
+        const source = escapeHtml(String(tag.source || 'manual'));
+        const timeLabel = escapeHtml(_tagTimeLabel(tag));
+        const seekTime = _tagSeekTime(tag);
+        const seekAttr = Number.isFinite(seekTime) ? `onclick="seekToEvent(${seekTime})"` : '';
+
+        const metaParts = [];
+        if (tag.track_id != null) metaParts.push(`track ${escapeHtml(String(tag.track_id))}`);
+        if (tag.player_name) {
+            metaParts.push(`player ${escapeHtml(String(tag.player_name))}`);
+        } else if (tag.player_id != null) {
+            metaParts.push(`player #${escapeHtml(String(tag.player_id))}`);
+        }
+        if (tag.team_name) {
+            metaParts.push(`team ${escapeHtml(String(tag.team_name))}`);
+        } else if (tag.team_id != null) {
+            metaParts.push(`team #${escapeHtml(String(tag.team_id))}`);
+        }
+        if (tag.confidence != null && Number.isFinite(Number(tag.confidence))) {
+            metaParts.push(`conf ${Number(tag.confidence).toFixed(2)}`);
+        }
+        if (tag.notes) {
+            metaParts.push(`note ${escapeHtml(String(tag.notes))}`);
+        }
+        const metaText = metaParts.length > 0 ? metaParts.join(' • ') : 'No additional metadata';
+
+        return `
+            <div class="tag-item" ${seekAttr}>
+                <div class="tag-item-header">
+                    <div class="tag-item-title">${label}</div>
+                    <div class="tag-item-meta">${timeLabel}</div>
+                </div>
+                <div class="tag-item-meta">
+                    <span class="tag-chip">${category}</span>
+                    <span class="tag-chip">${source}</span>
+                    ${metaText}
+                </div>
+                <div class="tag-item-actions">
+                    <button class="action-btn delete" onclick="deleteTag(${tagId}, event)">Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    tagsList.innerHTML = html;
+}
+
+async function loadTags(runName) {
+    if (!runName) return;
+    tagsLoadError = '';
+    try {
+        const params = new URLSearchParams();
+        if (tagFilters.label) params.set('label', tagFilters.label);
+        if (tagFilters.category) params.set('category', tagFilters.category);
+        if (tagFilters.source && tagFilters.source !== 'all') params.set('source', tagFilters.source);
+        const query = params.toString();
+        const endpoint = query
+            ? `/api/runs/${runName}/tags?${query}`
+            : `/api/runs/${runName}/tags`;
+
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        tags = Array.isArray(data.tags) ? data.tags : [];
+        renderTags();
+    } catch (error) {
+        console.error('Error loading tags:', error);
+        tags = [];
+        tagsLoadError = `Failed loading tags: ${error.message}`;
+        renderTags();
+    }
+}
+
+function applyTagFilters() {
+    _normalizeTagFiltersFromInputs();
+    if (!currentRun) {
+        renderTags();
+        return;
+    }
+    loadTags(currentRun);
+}
+
+function resetTagFilters() {
+    tagFilters = {
+        label: '',
+        category: '',
+        source: 'all'
+    };
+    _syncTagFilterInputs();
+    if (!currentRun) {
+        renderTags();
+        return;
+    }
+    loadTags(currentRun);
+}
+
+async function addManualTagAtCurrentTime() {
+    if (!currentRun) {
+        showToast('Please select a run first', 'error');
+        return;
+    }
+
+    const label = tagLabelInput ? String(tagLabelInput.value || '').trim() : '';
+    if (!label) {
+        showToast('Tag label is required', 'error');
+        if (tagLabelInput) tagLabelInput.focus();
+        return;
+    }
+
+    const categoryRaw = tagCategoryInput ? String(tagCategoryInput.value || '').trim() : '';
+    const notesRaw = tagNotesInput ? String(tagNotesInput.value || '').trim() : '';
+    const trackRaw = tagTrackInput ? String(tagTrackInput.value || '').trim() : '';
+    const confidenceRaw = tagConfidenceInput ? String(tagConfidenceInput.value || '').trim() : '';
+    const currentTime = Number(videoPlayer.currentTime || 0);
+    const fps = Number(videoMetadata?.fps || 30);
+    const frameIdx = Math.floor(currentTime * fps);
+
+    let trackId = null;
+    if (trackRaw) {
+        const parsedTrack = Number.parseInt(trackRaw, 10);
+        if (!Number.isFinite(parsedTrack)) {
+            showToast('Track ID must be an integer', 'error');
+            return;
+        }
+        trackId = parsedTrack;
+    }
+
+    let confidence = null;
+    if (confidenceRaw) {
+        const parsedConfidence = Number.parseFloat(confidenceRaw);
+        if (!Number.isFinite(parsedConfidence) || parsedConfidence < 0 || parsedConfidence > 1) {
+            showToast('Confidence must be between 0 and 1', 'error');
+            return;
+        }
+        confidence = parsedConfidence;
+    }
+
+    try {
+        const response = await fetch(`/api/runs/${currentRun}/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                label,
+                category: categoryRaw || 'general',
+                start_time: currentTime,
+                end_time: currentTime,
+                frame_idx: frameIdx,
+                track_id: trackId,
+                confidence,
+                source: 'manual',
+                notes: notesRaw || null,
+                metadata: { created_from: 'ui_tag_controls' }
+            })
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        showToast('Tag added', 'success');
+        if (tagNotesInput) tagNotesInput.value = '';
+        if (tagTrackInput) tagTrackInput.value = '';
+        if (tagConfidenceInput) tagConfidenceInput.value = '';
+        await loadTags(currentRun);
+    } catch (error) {
+        console.error('Error creating tag:', error);
+        showToast(`Failed to add tag: ${error.message}`, 'error');
+    }
+}
+
+async function deleteTag(tagId, clickEvent) {
+    if (clickEvent) clickEvent.stopPropagation();
+    if (!currentRun) return;
+    const confirmed = await showConfirmModal('Delete this tag?');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/runs/${currentRun}/tags/${tagId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+        showToast('Tag deleted', 'success');
+        await loadTags(currentRun);
+    } catch (error) {
+        console.error('Error deleting tag:', error);
+        showToast(`Failed to delete tag: ${error.message}`, 'error');
     }
 }
 
