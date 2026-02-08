@@ -132,12 +132,12 @@ Source guide: `veo_analytics_implementation_guide.md`
 
 | Veo API capability | Status | Current code path(s) | Notes |
 |---|---|---|---|
-| Videos API integration | Missing | — | No Veo API client in `src/integrations/`. |
+| Videos API integration | Partial | `src/integrations/veo_api.py` | Opt-in Veo client now supports basic video list/get/create/update operations via interface-boundary transport. |
 | Users API integration | Missing | — | No user sync integration. |
 | Groups/Communities API integration | Missing | — | No organization/group sync integration. |
 | Comments API integration | Missing | — | No comment sync flow. |
 | Tagsets API integration | Missing | — | No tag import/export bridge. |
-| OAuth/Bearer auth client | Missing | — | No Veo OAuth client/auth abstraction yet. |
+| OAuth/Bearer auth client | Partial | `src/integrations/veo_api.py` | Bearer-token auth is implemented; full OAuth flow/token refresh is still missing. |
 
 ## Immediate parity targets (from current gaps)
 

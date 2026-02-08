@@ -192,6 +192,18 @@ class CoachAssistConfig(BaseModel):
     min_confidence: float = 0.45
 
 
+class VeoAPIConfig(BaseModel):
+    """Optional Veo API integration client configuration."""
+
+    enabled: bool = False
+    allow_cloud: bool = False
+    base_url: str = "https://api.veo.co"
+    api_token: str | None = None
+    timeout_seconds: float = 15.0
+    verify_tls: bool = True
+    user_agent: str = "veo-soccer-analysis/0.1"
+
+
 class InterpolationConfig(BaseModel):
     """Ball trajectory interpolation configuration."""
 
@@ -528,6 +540,7 @@ class PipelineConfig(BaseModel):
     team_analytics: TeamAnalyticsConfig = Field(default_factory=TeamAnalyticsConfig)
     cross_match: CrossMatchReportingConfig = Field(default_factory=CrossMatchReportingConfig)
     coach_assist: CoachAssistConfig = Field(default_factory=CoachAssistConfig)
+    veo_api: VeoAPIConfig = Field(default_factory=VeoAPIConfig)
     events: EventsConfig = Field(default_factory=EventsConfig)
     highlights: HighlightsConfig = Field(default_factory=HighlightsConfig)
     overlay: OverlayConfig = Field(default_factory=OverlayConfig)
