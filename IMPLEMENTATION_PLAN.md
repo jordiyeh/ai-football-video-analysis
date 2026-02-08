@@ -21,7 +21,7 @@
 ### Phase 2: Match Stats and Visualization
 
 - [x] [HIGH] Step 06 — Unified match stats artifact: Create `src/analytics/match_stats.py` to emit `match_stats.json` with team-level totals (shots, goals, passes, set-pieces, possession). Test: `pytest tests/unit -q -k "match_stats or team_analytics or event_detection"`
-- [ ] [HIGH] Step 07 — Stats API + UI panel: Add backend endpoints in `src/ui/server.py` to serve match stats, add UI rendering for stats panel with team comparison in `src/ui/static/app.js` and `src/ui/static/index.html`. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [HIGH] Step 07 — Stats API + UI panel: Add backend endpoints in `src/ui/server.py` to serve match stats, add UI rendering for stats panel with team comparison in `src/ui/static/app.js` and `src/ui/static/index.html`. Test: `pytest tests/unit/test_ui_server.py -q`
 - [ ] [HIGH] Step 08 — Visualization framework scaffolding: Create package `src/export/visualizations/` with rendering interfaces and shared field canvas utilities. Test: `pytest tests/unit -q -k "visualization or field_normalization"`
 - [ ] [HIGH] Step 09 — Shot map visualization: Implement `src/export/visualizations/shot_map.py` with per-team and per-player filters. Test: `pytest tests/unit -q -k "shot_map or event_detection"`
 - [ ] [HIGH] Step 10 — Heat map visualization: Implement `src/export/visualizations/heat_map.py` from track/normalized coordinates, supporting team and player modes. Test: `pytest tests/unit -q -k "heat_map or field_normalization or team_analytics"`

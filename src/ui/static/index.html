@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Veo Soccer Analysis</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+        :root {
+            --bg: #edf3fb;
+            --panel: #ffffff;
+            --panel-soft: #f6f9ff;
+            --text: #1f2a3d;
+            --muted: #5f6d82;
+            --border: #d7e1ef;
+            --accent: #1565d8;
+            --accent-strong: #0f56b9;
+            --success: #1e8a5a;
+            --warning: #ff6b35;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,22 +27,31 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #0f1419;
-            color: #e8eaed;
+            font-family: 'Manrope', 'Avenir Next', 'Helvetica Neue', sans-serif;
+            background: radial-gradient(circle at top right, #dce9ff 0%, var(--bg) 35%, #f4f8ff 100%);
+            color: var(--text);
             line-height: 1.6;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Space Grotesk', 'Trebuchet MS', sans-serif;
+            letter-spacing: 0.01em;
         }
         
         .header {
-            background: #1a1d23;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(120deg, #ffffff 0%, #f2f7ff 100%);
             padding: 1rem 2rem;
-            border-bottom: 2px solid #2d3139;
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 8px 18px rgba(25, 47, 84, 0.08);
         }
         
         .header h1 {
-            color: #00ff88;
+            color: var(--accent);
             font-size: 1.5rem;
-            font-weight: 600;
+            font-weight: 700;
         }
         
         .container {
@@ -35,22 +59,161 @@
             margin: 0 auto;
             padding: 2rem;
         }
+
+        .pipeline-studio {
+            background: linear-gradient(135deg, #ffffff 0%, #f2f8ff 100%);
+            border-radius: 14px;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+            margin-bottom: 1.25rem;
+            box-shadow: 0 8px 24px rgba(24, 46, 84, 0.07);
+        }
+
+        .pipeline-studio-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .pipeline-studio-header h2 {
+            color: var(--accent);
+            font-size: 1.2rem;
+            margin-bottom: 0;
+        }
+
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .pipeline-grid .form-input,
+        .pipeline-grid textarea {
+            min-height: 42px;
+            font-size: 0.85rem;
+        }
+
+        .pipeline-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 0.7rem;
+        }
+
+        .pipeline-jobs {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-soft);
+            padding: 0.55rem;
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .pipeline-job-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.55rem 0.65rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .pipeline-job-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .pipeline-job-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .pipeline-job-title {
+            font-weight: 700;
+            color: var(--text);
+            font-size: 0.84rem;
+            line-height: 1.25;
+        }
+
+        .pipeline-job-meta {
+            color: var(--muted);
+            font-size: 0.74rem;
+            line-height: 1.3;
+        }
+
+        .pipeline-status-badge {
+            border-radius: 999px;
+            padding: 0.08rem 0.55rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+
+        .pipeline-status-badge.queued {
+            background: #dce5f6;
+            color: #264269;
+        }
+
+        .pipeline-status-badge.running {
+            background: #d9eafe;
+            color: #10479d;
+        }
+
+        .pipeline-status-badge.succeeded {
+            background: #d6f2e5;
+            color: #1f6b49;
+        }
+
+        .pipeline-status-badge.failed {
+            background: #ffe3da;
+            color: #9f3a17;
+        }
+
+        .pipeline-progress {
+            margin-top: 0.35rem;
+            height: 6px;
+            border-radius: 999px;
+            background: #e4ecf7;
+            overflow: hidden;
+        }
+
+        .pipeline-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #3f89f2);
+            width: 0;
+            transition: width 0.2s ease;
+        }
+
+        .pipeline-job-actions {
+            margin-top: 0.35rem;
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
         
         .runs-list {
-            background: #1a1d23;
-            border-radius: 8px;
+            background: var(--panel);
+            border-radius: 12px;
             padding: 1.5rem;
             margin-bottom: 2rem;
+            border: 1px solid var(--border);
+            box-shadow: 0 8px 24px rgba(25, 47, 84, 0.06);
         }
         
         .runs-list h2 {
-            color: #00ff88;
+            color: var(--accent);
             margin-bottom: 1rem;
             font-size: 1.25rem;
         }
         
         .run-item {
-            background: #252931;
+            background: var(--panel-soft);
             padding: 1rem;
             margin-bottom: 0.5rem;
             border-radius: 6px;
@@ -58,26 +221,26 @@
             transition: all 0.2s;
             border-left: 3px solid transparent;
         }
-        
+
         .run-item:hover {
-            background: #2d3139;
-            border-left-color: #00ff88;
+            background: var(--border);
+            border-left-color: var(--accent);
         }
-        
+
         .run-item.active {
-            background: #2d3139;
-            border-left-color: #00ff88;
+            background: var(--border);
+            border-left-color: var(--accent);
         }
-        
+
         .run-name {
             font-weight: 600;
-            color: #e8eaed;
+            color: var(--text);
             margin-bottom: 0.5rem;
         }
-        
+
         .run-meta {
             font-size: 0.875rem;
-            color: #9aa0a6;
+            color: var(--muted);
         }
         
         .event-badge {
@@ -90,13 +253,18 @@
         }
         
         .event-badge.shot {
-            background: #ff6b35;
+            background: var(--warning);
             color: #fff;
         }
-        
+
         .event-badge.goal {
-            background: #00ff88;
-            color: #0f1419;
+            background: var(--success);
+            color: #fff;
+        }
+
+        .event-badge.player {
+            background: #3c6fff;
+            color: #ffffff;
         }
         
         .viewer {
@@ -110,38 +278,130 @@
         }
         
         .video-section {
-            background: #1a1d23;
+            background: var(--panel);
             border-radius: 8px;
             padding: 1.5rem;
         }
-        
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 6px;
+        }
+
         video {
             width: 100%;
             border-radius: 6px;
             background: #000;
+            display: block;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border-radius: 6px;
+        }
+
+        .overlay-controls {
+            background: var(--panel-soft);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .toggle-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .toggle-btn {
+            background: var(--border);
+            color: var(--text);
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background: var(--muted);
+        }
+
+        .toggle-btn.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .color-picker-group {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .color-picker-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .color-picker-item label {
+            color: var(--text);
+            font-size: 0.875rem;
+        }
+
+        .color-picker-item input[type="color"] {
+            width: 40px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
         }
         
         .timeline {
-            background: #252931;
+            background: var(--panel-soft);
             border-radius: 6px;
             padding: 1rem;
             margin-top: 1rem;
             position: relative;
-            height: 80px;
+            height: 90px;
         }
-        
+
         .timeline-bar {
             width: 100%;
-            height: 6px;
-            background: #3d4149;
-            border-radius: 3px;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
             position: relative;
             margin: 1rem 0;
         }
-        
+
         .timeline-progress {
             height: 100%;
-            background: #00ff88;
+            background: var(--accent);
             border-radius: 3px;
             width: 0%;
             transition: width 0.1s;
@@ -149,20 +409,23 @@
         
         .timeline-marker {
             position: absolute;
-            top: -4px;
-            width: 14px;
-            height: 14px;
+            top: -5px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
             cursor: pointer;
             transition: all 0.2s;
+            margin-left: -9px;
+            border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
         }
         
         .timeline-marker.shot {
-            background: #ff6b35;
+            background: var(--warning);
         }
         
         .timeline-marker.goal {
-            background: #00ff88;
+            background: var(--accent);
         }
         
         .timeline-marker:hover {
@@ -170,21 +433,482 @@
         }
         
         .events-panel {
-            background: #1a1d23;
+            background: var(--panel);
             border-radius: 8px;
             padding: 1.5rem;
             max-height: 800px;
             overflow-y: auto;
         }
-        
+
         .events-panel h3 {
-            color: #00ff88;
+            color: var(--accent);
             margin-bottom: 1rem;
             font-size: 1.1rem;
         }
+
+        .player-reels-section {
+            margin-top: 1.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .season-section {
+            margin-top: 1.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .season-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 0.65rem;
+        }
+
+        .season-downloads {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.45rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .season-summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.45rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .season-kpi {
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.55rem;
+        }
+
+        .season-kpi-label {
+            color: var(--muted);
+            font-size: 0.72rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .season-kpi-value {
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.92rem;
+        }
+
+        .season-scroll {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem;
+            background: var(--panel-soft);
+            margin-bottom: 0.65rem;
+        }
+
+        .season-row {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            margin-bottom: 0.4rem;
+            color: var(--text);
+            font-size: 0.76rem;
+            line-height: 1.35;
+        }
+
+        .season-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .player-reels-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.75rem;
+        }
+
+        .player-reels-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .player-reels-controls .form-input {
+            font-size: 0.78rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .player-reels-export-controls {
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+
+        .panel-note {
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .player-reel-card {
+            background: var(--panel-soft);
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .player-reel-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0.5rem;
+        }
+
+        .player-reel-name {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .player-reel-meta {
+            color: var(--muted);
+            font-size: 0.78rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+        }
+
+        .player-reel-select {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            color: var(--muted);
+            font-size: 0.74rem;
+        }
+
+        .player-reel-select input[type="checkbox"] {
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .reel-segment-btn {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text);
+            border-radius: 4px;
+            text-align: left;
+            padding: 0.5rem 0.6rem;
+            margin-bottom: 0.4rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .reel-segment-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        .reel-segment-btn:hover {
+            border-color: var(--accent);
+            background: var(--panel-soft);
+            transform: translateX(2px);
+        }
+
+        .reel-segment-time {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .reel-segment-details {
+            font-size: 0.76rem;
+            color: var(--muted);
+            margin-top: 0.15rem;
+        }
+
+        .reel-segment-actions {
+            margin-top: 0.35rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .reel-clip-btn {
+            border: 1px solid var(--accent);
+            background: var(--accent-strong);
+            color: #fff;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            font-size: 0.74rem;
+            transition: all 0.2s;
+        }
+
+        .reel-clip-btn:hover {
+            border-color: var(--accent);
+            background: var(--accent);
+        }
+
+        .identity-section {
+            margin-top: 1.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .identity-controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+
+        .identity-btn {
+            background: var(--border);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.35rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.76rem;
+            transition: all 0.2s;
+        }
+
+        .identity-btn:hover {
+            background: var(--muted);
+            border-color: var(--accent);
+        }
+
+        .identity-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            background: var(--panel-soft);
+            border-color: var(--border);
+            color: var(--muted);
+        }
+
+        .identity-btn.primary {
+            background: #146c4a;
+            border-color: #1a8f61;
+            color: #e8fff5;
+        }
+
+        .identity-btn.primary:hover {
+            background: #1b8f61;
+            border-color: #22b274;
+        }
+
+        .identity-inline-form {
+            display: grid;
+            grid-template-columns: 1.4fr 0.8fr 1fr auto;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .identity-inline-form .form-input {
+            font-size: 0.78rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .identity-subheader {
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin: 0.65rem 0 0.4rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .identity-scroll {
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem;
+            background: var(--panel-soft);
+        }
+
+        .identity-player-row,
+        .identity-assignment-row {
+            display: grid;
+            gap: 0.4rem;
+            align-items: center;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .identity-player-row {
+            grid-template-columns: 0.9fr 1.3fr 0.8fr 1fr auto;
+        }
+
+        .identity-assignment-row {
+            grid-template-columns: 0.35fr 0.8fr 0.9fr 1.5fr 1fr auto;
+        }
+
+        .identity-id {
+            color: var(--muted);
+            font-size: 0.74rem;
+        }
+
+        .identity-assignment-meta {
+            color: var(--muted);
+            font-size: 0.72rem;
+            line-height: 1.3;
+        }
+
+        .identity-search {
+            margin-bottom: 0.5rem;
+        }
+
+        .identity-status {
+            margin-bottom: 0.5rem;
+            color: var(--muted);
+            font-size: 0.76rem;
+        }
+
+        .status-error { color: var(--warning); }
+        .status-info  { color: var(--muted); }
+
+        .identity-preview {
+            margin-bottom: 0.65rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--panel-soft);
+            padding: 0.5rem;
+            color: var(--muted);
+            font-size: 0.74rem;
+            line-height: 1.35;
+        }
+
+        .identity-preview strong {
+            color: var(--text);
+            font-size: 0.76rem;
+        }
+
+        .identity-edits {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem;
+            background: var(--panel-soft);
+            margin-bottom: 0.65rem;
+        }
+
+        .identity-edit-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.4rem;
+            align-items: center;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .identity-edit-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .identity-edit-meta {
+            color: var(--muted);
+            font-size: 0.72rem;
+            line-height: 1.35;
+        }
+
+        .identity-suggestion-row {
+            display: grid;
+            grid-template-columns: 0.35fr 0.8fr 1.1fr 1.4fr;
+            gap: 0.4rem;
+            align-items: center;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .identity-suggestion-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .identity-suggestion-meta {
+            color: var(--muted);
+            font-size: 0.72rem;
+            line-height: 1.35;
+        }
+
+        .identity-bulk-controls {
+            display: grid;
+            grid-template-columns: 0.85fr 1fr auto auto auto;
+            gap: 0.5rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .identity-suggestion-controls {
+            display: grid;
+            grid-template-columns: 0.85fr 1fr auto auto auto auto auto auto;
+            gap: 0.5rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .identity-bulk-controls .form-input {
+            font-size: 0.78rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .identity-suggestion-controls .form-input {
+            font-size: 0.78rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .identity-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--muted);
+            font-size: 0.75rem;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .identity-toggle input[type="checkbox"] {
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .identity-selected-count {
+            color: var(--muted);
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.2rem;
+        }
+
+        .identity-select-cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .identity-select-cell input[type="checkbox"] {
+            transform: scale(1.05);
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
         
         .event-item {
-            background: #252931;
+            background: var(--panel-soft);
             padding: 1rem;
             margin-bottom: 0.75rem;
             border-radius: 6px;
@@ -192,109 +916,2193 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        
+
         .event-item.shot {
-            border-left-color: #ff6b35;
+            border-left-color: var(--warning);
         }
-        
+
         .event-item.goal {
-            border-left-color: #00ff88;
+            border-left-color: var(--accent);
         }
-        
+
         .event-item:hover {
-            background: #2d3139;
+            background: var(--border);
             transform: translateX(4px);
         }
-        
+
         .event-time {
             font-weight: 600;
-            color: #e8eaed;
+            color: var(--text);
             margin-bottom: 0.25rem;
         }
-        
+
         .event-details {
             font-size: 0.875rem;
-            color: #9aa0a6;
+            color: var(--muted);
         }
-        
+
         .confidence {
             display: inline-block;
             padding: 0.125rem 0.375rem;
             border-radius: 3px;
             font-size: 0.75rem;
-            background: #3d4149;
-            color: #e8eaed;
+            background: var(--border);
+            color: var(--text);
             margin-left: 0.5rem;
         }
-        
+
         .confidence.high {
-            background: #00ff88;
-            color: #0f1419;
+            background: var(--accent);
+            color: #fff;
         }
-        
+
         .loading {
             text-align: center;
             padding: 3rem;
-            color: #9aa0a6;
+            color: var(--muted);
         }
-        
+
+        /* Event actions */
+        .event-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .action-btn {
+            padding: 0.25rem 0.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .action-btn.approve {
+            background: #1a3d1a;
+            color: var(--accent);
+        }
+
+        .action-btn.approve:hover {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .action-btn.reject {
+            background: #3d1a1a;
+            color: var(--warning);
+        }
+
+        .action-btn.reject:hover {
+            background: var(--warning);
+            color: #fff;
+        }
+
+        .action-btn.delete {
+            background: #3d2a1a;
+            color: #ffaa35;
+        }
+
+        .action-btn.delete:hover {
+            background: #ffaa35;
+            color: #edf3fb;
+        }
+
+        /* Status badges */
+        .status-badge {
+            font-size: 0.7rem;
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .status-badge.pending {
+            background: var(--border);
+            color: var(--muted);
+        }
+
+        .status-badge.confirmed {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .status-badge.rejected {
+            background: var(--warning);
+            color: #fff;
+        }
+
+        /* Event item states */
+        .event-item.confirmed {
+            opacity: 0.8;
+        }
+
+        .event-item.rejected {
+            opacity: 0.4;
+            text-decoration: line-through;
+        }
+
+        .event-item.manual {
+            border-left-style: dashed;
+        }
+
+        /* Events header with add button */
+        .events-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .events-header h3 {
+            margin: 0;
+        }
+
+        .add-event-btn {
+            background: var(--warning);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .add-event-btn:hover {
+            opacity: 0.85;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-content {
+            background: var(--panel);
+            margin: 15% auto;
+            padding: 1.5rem;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+            border: 1px solid var(--border);
+        }
+
+        .clip-modal-content {
+            width: min(900px, 95%);
+            margin: 5% auto;
+        }
+
+        #clipPlayer {
+            width: 100%;
+            border-radius: 6px;
+            background: #000;
+            margin-top: 0.75rem;
+        }
+
+        .modal-content .close {
+            color: var(--muted);
+            float: right;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-content .close:hover {
+            color: var(--text);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--panel-soft);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .roster-inline-input {
+            padding: 0.3rem 0.45rem;
+            background: var(--panel-soft);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            transition: border-color 0.15s;
+        }
+        .roster-inline-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-hint {
+            color: var(--muted);
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 0.75rem;
+            margin-top: 1rem;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .submit-btn:hover {
+            background: var(--accent-strong);
+        }
+
         .score {
-            background: #252931;
+            background: var(--panel-soft);
             padding: 1rem;
             border-radius: 6px;
             margin-bottom: 1rem;
             text-align: center;
         }
-        
+
         .score-display {
             font-size: 2rem;
             font-weight: 700;
-            color: #00ff88;
+            color: var(--accent);
         }
         
+        /* Playback controls */
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.75rem;
+            margin-top: 0.5rem;
+            background: var(--panel-soft);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .playback-btn {
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.3rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .playback-btn:hover {
+            border-color: var(--accent);
+            background: var(--border);
+        }
+
+        .speed-btn {
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.3rem 0.55rem;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .speed-btn:hover {
+            border-color: var(--accent);
+        }
+
+        .speed-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .playback-time {
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-variant-numeric: tabular-nums;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .playback-separator {
+            width: 1px;
+            height: 18px;
+            background: var(--border);
+            margin: 0 0.15rem;
+        }
+
+        /* Event filters */
+        .event-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .filter-btn {
+            background: var(--panel-soft);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.3rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .filter-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .filter-count {
+            font-size: 0.7rem;
+            background: rgba(0,0,0,0.1);
+            padding: 0.05rem 0.35rem;
+            border-radius: 999px;
+            min-width: 1.1rem;
+            text-align: center;
+        }
+
+        .filter-btn.active .filter-count {
+            background: rgba(255,255,255,0.25);
+        }
+
+        .filter-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+            margin: 0 0.1rem;
+            align-self: center;
+        }
+
+        /* Keyboard shortcuts modal */
+        .shortcuts-modal .modal-content {
+            width: 480px;
+        }
+
+        .shortcuts-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .shortcuts-table td {
+            padding: 0.35rem 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .shortcuts-table td:first-child {
+            text-align: right;
+            width: 40%;
+            white-space: nowrap;
+        }
+
+        .shortcuts-table td:last-child {
+            color: var(--muted);
+        }
+
+        kbd {
+            display: inline-block;
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0.1rem 0.4rem;
+            font-family: 'SF Mono', 'Menlo', monospace;
+            font-size: 0.78rem;
+            color: var(--text);
+            box-shadow: 0 1px 0 var(--border);
+        }
+
+        /* Toast notifications */
+        #toastContainer {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 0.5rem;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            border-radius: 6px;
+            padding: 0.65rem 1rem;
+            font-size: 0.84rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            animation: toastSlideUp 0.3s ease;
+            max-width: 380px;
+            word-break: break-word;
+        }
+
+        .toast-success { border-left-color: var(--success); }
+        .toast-error { border-left-color: var(--warning); }
+        .toast-info { border-left-color: var(--accent); }
+
+        @keyframes toastSlideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .toast-exit {
+            animation: toastFadeOut 0.25s ease forwards;
+        }
+
+        @keyframes toastFadeOut {
+            to { opacity: 0; transform: translateY(8px); }
+        }
+
+        /* Loading bar */
+        #loadingBar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), #5fa8ff);
+            z-index: 2001;
+            transition: width 0.3s ease;
+        }
+
+        #loadingBar.active {
+            animation: loadingPulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loadingPulse {
+            0% { opacity: 0.7; }
+            50% { opacity: 1; }
+            100% { opacity: 0.7; }
+        }
+
+        /* Interactive timeline */
+        .timeline {
+            height: auto;
+            padding: 0.75rem 1rem 0.5rem 1rem;
+        }
+
+        .timeline-time-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.72rem;
+            color: var(--muted);
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 0.25rem;
+        }
+
+        .timeline-bar {
+            height: 12px;
+            cursor: pointer;
+        }
+
+        .timeline-scrubber {
+            position: absolute;
+            top: -3px;
+            width: 14px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 3px;
+            margin-left: -7px;
+            cursor: grab;
+            z-index: 5;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            transition: left 0.05s linear;
+        }
+
+        .timeline-scrubber:active {
+            cursor: grabbing;
+        }
+
+        .timeline-hover-tooltip {
+            position: absolute;
+            bottom: calc(100% + 6px);
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.2rem 0.4rem;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 10;
+            transition: opacity 0.1s;
+            transform: translateX(-50%);
+        }
+
+        /* Fullscreen */
+        .video-container:fullscreen,
+        .video-container:-webkit-full-screen {
+            background: #000;
+        }
+
+        .video-container:fullscreen video,
+        .video-container:-webkit-full-screen video {
+            max-height: 100vh;
+            object-fit: contain;
+        }
+
+        .video-container:fullscreen #overlayCanvas,
+        .video-container:-webkit-full-screen #overlayCanvas {
+            max-height: 100vh;
+        }
+
+        .fullscreen-btn {
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.3rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .fullscreen-btn:hover {
+            border-color: var(--accent);
+            background: var(--border);
+        }
+
+        /* Run summary bar */
+        #runSummaryBar {
+            display: none;
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.78rem;
+            color: var(--muted);
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        #runSummaryBar.visible {
+            display: flex;
+        }
+
+        .run-summary-item {
+            display: inline-flex;
+            gap: 0.3rem;
+            align-items: baseline;
+        }
+
+        .run-summary-value {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* Team analytics dashboard */
+        .team-analytics-section {
+            margin-top: 1.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .match-stats-card {
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.65rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .match-stats-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.45rem;
+            gap: 0.4rem;
+        }
+
+        .match-stats-card-title {
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .match-stats-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .match-stats-team {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text);
+            padding: 0.18rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: #fff;
+        }
+
+        .match-stats-team-left {
+            border-color: rgba(21, 101, 216, 0.35);
+            background: rgba(21, 101, 216, 0.12);
+            color: #10479d;
+        }
+
+        .match-stats-team-right {
+            border-color: rgba(224, 85, 85, 0.35);
+            background: rgba(224, 85, 85, 0.12);
+            color: #8f2f2f;
+        }
+
+        .match-stats-vs {
+            font-size: 0.72rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+        }
+
+        .match-stats-row {
+            display: grid;
+            grid-template-columns: 56px 1fr 56px;
+            gap: 0.45rem;
+            align-items: center;
+            margin-bottom: 0.4rem;
+        }
+
+        .match-stats-value {
+            font-weight: 700;
+            font-size: 0.82rem;
+            text-align: center;
+            color: var(--text);
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.18rem 0.2rem;
+        }
+
+        .match-stats-left {
+            color: #10479d;
+        }
+
+        .match-stats-right {
+            color: #8f2f2f;
+        }
+
+        .match-stats-metric-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+            margin-bottom: 0.16rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .match-stats-bar {
+            display: flex;
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: #fff;
+        }
+
+        .match-stats-bar-left {
+            background: #1565d8;
+            min-width: 2px;
+        }
+
+        .match-stats-bar-right {
+            background: #e05555;
+            min-width: 2px;
+        }
+
+        .match-stats-totals {
+            margin-top: 0.55rem;
+            border-top: 1px solid var(--border);
+            padding-top: 0.5rem;
+            display: grid;
+            gap: 0.2rem;
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+
+        .analytics-possession-bar {
+            display: flex;
+            height: 24px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+
+        .analytics-possession-bar > div {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #fff;
+            transition: width 0.3s;
+        }
+
+        .analytics-territory-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2px;
+            margin: 0.5rem 0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .analytics-territory-cell {
+            padding: 0.5rem;
+            text-align: center;
+            font-size: 0.72rem;
+            font-weight: 600;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .analytics-kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 0.45rem;
+            margin: 0.5rem 0;
+        }
+
+        .analytics-kpi {
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            text-align: center;
+        }
+
+        .analytics-kpi-label {
+            color: var(--muted);
+            font-size: 0.68rem;
+        }
+
+        .analytics-kpi-value {
+            color: var(--text);
+            font-weight: 700;
+            font-size: 0.88rem;
+        }
+
+        .analytics-pass-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.76rem;
+            margin: 0.5rem 0;
+        }
+
+        .analytics-pass-table th {
+            text-align: left;
+            color: var(--muted);
+            font-weight: 600;
+            padding: 0.25rem 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .analytics-pass-table td {
+            padding: 0.25rem 0.4rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        /* Confirmation modal */
+        .confirm-modal-content {
+            text-align: center;
+        }
+
+        .confirm-modal-content p {
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        .confirm-modal-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+        }
+
+        .confirm-modal-actions button {
+            padding: 0.5rem 1.25rem;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        .confirm-modal-actions .confirm-yes {
+            background: var(--warning);
+            color: #fff;
+            border-color: var(--warning);
+        }
+
+        .confirm-modal-actions .confirm-no {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        /* Inline event notes */
+        .event-inline-notes {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.4rem;
+        }
+
+        .event-inline-notes input {
+            flex: 1;
+            padding: 0.3rem 0.5rem;
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        .event-inline-notes input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .event-inline-notes button {
+            padding: 0.3rem 0.6rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        /* Collapsible sections */
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapsible-header h3 {
+            margin: 0;
+        }
+
+        .collapsible-chevron {
+            font-size: 0.8rem;
+            color: var(--muted);
+            transition: transform 0.2s;
+        }
+
+        .collapsible-body.collapsed {
+            display: none;
+        }
+
+        .collapsible-chevron.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        /* Pagination */
+        .show-more-btn {
+            width: 100%;
+            padding: 0.4rem;
+            margin-top: 0.4rem;
+            background: var(--panel-soft);
+            color: var(--accent);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .show-more-btn:hover {
+            background: var(--border);
+        }
+
+        /* Onboarding card */
+        .onboarding-card {
+            background: linear-gradient(135deg, #f0f6ff 0%, #e8f1ff 100%);
+            border: 1px solid var(--accent);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        :root.dark .onboarding-card {
+            background: linear-gradient(135deg, #1a2438 0%, #172033 100%);
+        }
+
+        .onboarding-card h3 {
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+        }
+
+        .onboarding-steps {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            margin: 1rem 0;
+            flex-wrap: wrap;
+        }
+
+        .onboarding-step {
+            text-align: center;
+            max-width: 200px;
+        }
+
+        .onboarding-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .onboarding-step p {
+            font-size: 0.82rem;
+            color: var(--muted);
+        }
+
+        .onboarding-dismiss {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 0.78rem;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+
+        .onboarding-dismiss:hover {
+            color: var(--text);
+        }
+
+        /* Export buttons */
+        .section-export-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            border-radius: 4px;
+            padding: 0.15rem 0.45rem;
+            cursor: pointer;
+            font-size: 0.68rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .section-export-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Runs sorting */
+        .runs-header-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .runs-header-controls .run-search-input {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        #runSortBy {
+            padding: 0.5rem;
+            background: var(--panel-soft);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-family: inherit;
+            min-width: 140px;
+        }
+
+        #runSortBy:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Dark mode */
+        :root.dark {
+            --bg: #0f1219;
+            --panel: #1a1f2e;
+            --panel-soft: #151a26;
+            --text: #d4dae8;
+            --muted: #8892a4;
+            --border: #2a3244;
+            --accent: #4d8bf5;
+            --accent-strong: #3a7ae8;
+            --success: #2ba86a;
+            --warning: #ff8a55;
+        }
+
+        :root.dark body {
+            background: radial-gradient(circle at top right, #141a2a 0%, var(--bg) 35%, #111520 100%);
+        }
+
+        :root.dark .header {
+            background: linear-gradient(120deg, #1a1f2e 0%, #151a26 100%);
+            border-bottom-color: var(--border);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+        }
+
+        :root.dark .pipeline-studio {
+            background: linear-gradient(135deg, #1a1f2e 0%, #151a26 100%);
+        }
+
+        :root.dark .action-btn.approve {
+            background: #1a3d1a;
+            color: var(--success);
+        }
+
+        :root.dark .action-btn.reject {
+            background: #3d1a1a;
+            color: var(--warning);
+        }
+
+        :root.dark .action-btn.delete {
+            background: #3d2a1a;
+            color: #ffaa35;
+        }
+
+        /* Dark mode overrides for non-variable properties (gradients, etc.) */
+
+        /* Theme toggle button */
+        .theme-toggle {
+            background: var(--panel-soft);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.35rem 0.7rem;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        /* Enhanced timeline */
+        .timeline-marker {
+            width: 18px;
+            height: 18px;
+            margin-left: -9px;
+            border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+
+        .timeline-tooltip {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.3rem 0.5rem;
+            font-size: 0.72rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+
+        .timeline-marker:hover .timeline-tooltip {
+            opacity: 1;
+        }
+
+        .timeline-marker.current {
+            box-shadow: 0 0 0 3px var(--accent), 0 1px 4px rgba(0,0,0,0.3);
+            transform: scale(1.2);
+        }
+
+        .event-item.current {
+            border-left-width: 4px;
+            box-shadow: inset 0 0 0 1px var(--accent);
+        }
+
+        /* Run search input */
+        .run-search-input {
+            width: 100%;
+            padding: 0.5rem 0.7rem;
+            margin-bottom: 0.75rem;
+            background: var(--panel-soft);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-family: inherit;
+        }
+
+        .run-search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .run-search-input::placeholder {
+            color: var(--muted);
+        }
+
         @media (max-width: 1024px) {
+            .pipeline-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .pipeline-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
             .viewer.active {
                 grid-template-columns: 1fr;
             }
+
+            .player-reels-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .season-downloads {
+                grid-template-columns: 1fr;
+            }
+
+            .season-summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .player-reels-export-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .identity-inline-form {
+                grid-template-columns: 1fr;
+            }
+
+            .identity-player-row,
+            .identity-assignment-row {
+                grid-template-columns: 1fr;
+            }
+
+            .identity-bulk-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .identity-suggestion-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .playback-controls {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .event-filters {
+                justify-content: center;
+            }
+
+            .filter-separator {
+                display: none;
+            }
+        }
+
+        /* ── Burger menu & navigation ── */
+        .burger-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px;
+        }
+        .burger-btn span {
+            display: block;
+            width: 22px;
+            height: 2.5px;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .burger-btn.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+        .burger-btn.open span:nth-child(2) { opacity: 0; }
+        .burger-btn.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+        .nav-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 998;
+        }
+        .nav-overlay.open { display: block; }
+
+        .nav-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--panel);
+            box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+            z-index: 999;
+            padding: 1.5rem;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+        }
+        .nav-panel.open { transform: translateX(0); }
+
+        .nav-item {
+            display: block;
+            padding: 0.7rem 0.9rem;
+            margin-bottom: 0.3rem;
+            border-radius: 8px;
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .nav-item:hover { background: var(--panel-soft); }
+        .nav-item.active { background: var(--accent); color: #fff; }
+
+        /* ── Team Manager ── */
+        .team-manager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .team-manager-header h2 { color: var(--accent); }
+
+        .team-create-form {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: var(--panel-soft);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .teams-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .team-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+        .team-card:hover { box-shadow: 0 4px 16px rgba(21,101,216,0.12); }
+
+        .team-card-header {
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .team-card-header h3 { font-size: 1.05rem; }
+        .team-card-meta { color: var(--muted); font-size: 0.82rem; }
+
+        .team-logo-sm {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            object-fit: contain;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+            flex-shrink: 0;
+        }
+        .team-logo-initials {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: var(--muted);
+            flex-shrink: 0;
+        }
+        .team-logo-lg {
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            object-fit: contain;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+        }
+        .team-logo-placeholder {
+            width: 72px;
+            height: 72px;
+            border-radius: 10px;
+            border: 2px dashed var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            font-size: 1.4rem;
+            cursor: pointer;
+        }
+
+        .kit-swatches {
+            display: flex;
+            gap: 0.4rem;
+            margin-top: 0.4rem;
+        }
+        .kit-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            position: relative;
+        }
+        .kit-swatch-label {
+            font-size: 0.6rem;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .kit-swatch-inline {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            vertical-align: middle;
+        }
+
+        .team-detail-panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .kit-slot {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .kit-slot:last-child { border-bottom: none; }
+
+        .kit-thumb {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+        }
+        .kit-thumb-placeholder {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            border: 2px dashed var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            font-size: 1.4rem;
+        }
+
+        /* ── Player Manager ── */
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .player-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+        }
+        .player-photo {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .player-photo-placeholder {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 2px dashed var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            font-size: 1.4rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            background: var(--panel-soft);
+        }
+        .player-photo-placeholder:hover,
+        .player-photo:hover {
+            border-color: var(--accent);
+            opacity: 0.85;
+        }
+        .player-card-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .player-card-info .field-row {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            margin-bottom: 0.35rem;
+        }
+        .player-card-actions {
+            display: flex;
+            gap: 0.3rem;
+            margin-top: 0.4rem;
+            flex-wrap: wrap;
+        }
+
+        .embedding-badge {
+            display: inline-block;
+            padding: 0.15rem 0.45rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+            user-select: none;
+        }
+        .embedding-badge:hover { opacity: 0.85; }
+        .training-images-gallery {
+            grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+            gap: 0.3rem;
+            margin-top: 0.4rem;
+        }
+        .training-thumb-wrapper {
+            position: relative;
+        }
+        .training-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+        .training-thumb-delete {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--warning);
+            color: #fff;
+            border: none;
+            font-size: 0.7rem;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ── Pipeline team selectors ── */
+        .pipeline-team-selectors {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.7rem;
+            flex-wrap: wrap;
+        }
+        .pipeline-team-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .pipeline-team-row label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .pipeline-team-row select {
+            min-width: 150px;
+        }
+
+        /* ── Team mapping bar (run viewer) ── */
+        .team-mapping-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--panel-soft);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 0.75rem;
+            font-size: 0.85rem;
+        }
+        .team-mapping-bar .team-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
+    <div id="loadingBar"></div>
+    <div id="toastContainer"></div>
     <div class="header">
-        <h1>⚽ Veo Soccer Analysis</h1>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+            <button class="burger-btn" id="burgerBtn" onclick="toggleNav()" aria-label="Menu">
+                <span></span><span></span><span></span>
+            </button>
+            <h1>⚽ Veo Soccer Analysis</h1>
+        </div>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">Dark Mode</button>
     </div>
+
+    <!-- Navigation overlay + side panel -->
+    <div class="nav-overlay" id="navOverlay" onclick="toggleNav()"></div>
+    <nav class="nav-panel" id="navPanel">
+        <h3 style="margin-bottom:1rem;color:var(--accent);">Navigation</h3>
+        <a class="nav-item active" data-view="matchAnalysisView" onclick="showView('matchAnalysisView')">Match Analysis</a>
+        <a class="nav-item" data-view="teamManagerView" onclick="showView('teamManagerView')">Team Manager</a>
+        <a class="nav-item" data-view="playerManagerView" onclick="showView('playerManagerView')">Players</a>
+    </nav>
     
     <div class="container">
+        <!-- ═══ Match Analysis View ═══ -->
+        <div id="matchAnalysisView">
+        <div class="pipeline-studio">
+            <div class="pipeline-studio-header">
+                <h2>Pipeline Studio</h2>
+                <span class="panel-note" id="pipelineStudioStatus">Queue a local MP4 to run the full analysis pipeline.</span>
+            </div>
+            <form onsubmit="submitPipelineJobs(event)">
+                <div class="pipeline-grid">
+                    <div style="display:flex;gap:0.5rem;align-items:start;">
+                        <textarea
+                            id="pipelineVideoPaths"
+                            class="form-input"
+                            rows="3"
+                            placeholder="Video paths (one per line), e.g.&#10;match.mp4&#10;/Users/.../week2.mp4"
+                            required
+                            style="flex:1;"
+                        ></textarea>
+                        <button type="button" class="identity-btn" id="browseVideosBtn" onclick="browseVideos()" title="Browse for video files" style="white-space:nowrap;">Browse...</button>
+                    </div>
+                    <select id="pipelineConfigPath" class="form-input"></select>
+                    <input
+                        id="pipelineRunPrefix"
+                        type="text"
+                        class="form-input"
+                        placeholder="Run name or prefix (optional)"
+                    >
+                </div>
+                <div class="pipeline-team-selectors" id="pipelineTeamSelectors">
+                    <div class="pipeline-team-row">
+                        <label>Home team</label>
+                        <select id="pipelineHomeTeam" class="form-input" onchange="updatePipelineKitSelector('home')">
+                            <option value="">None</option>
+                        </select>
+                        <select id="pipelineHomeKit" class="form-input" style="width:100px;">
+                            <option value="home">Home kit</option>
+                            <option value="away">Away kit</option>
+                            <option value="third">Third kit</option>
+                        </select>
+                        <span id="pipelineHomeColor" class="kit-swatch-inline"></span>
+                    </div>
+                    <div class="pipeline-team-row">
+                        <label>Away team</label>
+                        <select id="pipelineAwayTeam" class="form-input" onchange="updatePipelineKitSelector('away')">
+                            <option value="">None</option>
+                        </select>
+                        <select id="pipelineAwayKit" class="form-input" style="width:100px;">
+                            <option value="home">Home kit</option>
+                            <option value="away">Away kit</option>
+                            <option value="third">Third kit</option>
+                        </select>
+                        <span id="pipelineAwayColor" class="kit-swatch-inline"></span>
+                    </div>
+                </div>
+                <div class="pipeline-actions">
+                    <label class="identity-toggle">
+                        <input id="pipelineResume" type="checkbox">
+                        Resume existing run if available
+                    </label>
+                    <label class="identity-toggle">
+                        <input id="pipelineNoOverlay" type="checkbox">
+                        Skip overlay render (faster)
+                    </label>
+                    <button class="identity-btn" type="button" onclick="loadPipelineJobs(true)">Refresh Jobs</button>
+                    <button class="identity-btn primary" id="pipelineSubmitBtn" type="submit">Queue Analysis</button>
+                </div>
+            </form>
+            <div id="pipelineJobsList" class="pipeline-jobs">
+                <p class="loading">Loading pipeline jobs...</p>
+            </div>
+        </div>
+
         <div class="runs-list" id="runsList">
             <h2>Analysis Runs</h2>
-            <div class="loading">Loading runs...</div>
+            <div class="runs-header-controls">
+                <input id="runSearchInput" class="run-search-input" type="text" placeholder="Search runs..." oninput="filterRuns()" aria-label="Search analysis runs">
+                <select id="runSortBy" onchange="filterRuns()">
+                    <option value="name_asc">Name A-Z</option>
+                    <option value="name_desc">Name Z-A</option>
+                    <option value="events_desc">Most Events</option>
+                    <option value="duration_desc">Longest Duration</option>
+                </select>
+            </div>
+            <div id="onboardingCard"></div>
+            <div id="runsListContent" class="loading">Loading runs...</div>
         </div>
         
         <div class="viewer" id="viewer">
             <div class="video-section">
-                <video id="videoPlayer" controls>
-                    <source id="videoSource" src="" type="video/mp4">
-                    Your browser does not support the video tag.
-                </video>
-                
+                <div id="runSummaryBar">
+                </div>
+                <div class="video-container" id="videoContainer">
+                    <video id="videoPlayer" controls>
+                        <source id="videoSource" src="" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                    <canvas id="overlayCanvas"></canvas>
+                </div>
+
+                <div class="playback-controls" role="toolbar" aria-label="Playback controls">
+                    <button class="playback-btn" onclick="stepFrame(-1)" title="Previous frame (Shift+Left)" aria-label="Previous frame">&#9664;&#9664;</button>
+                    <button class="playback-btn" onclick="stepFrame(1)" title="Next frame (Shift+Right)" aria-label="Next frame">&#9654;&#9654;</button>
+                    <div class="playback-separator"></div>
+                    <button class="speed-btn" onclick="setPlaybackSpeed(0.25)" aria-label="Playback speed 0.25x">0.25x</button>
+                    <button class="speed-btn" onclick="setPlaybackSpeed(0.5)" aria-label="Playback speed 0.5x">0.5x</button>
+                    <button class="speed-btn active" onclick="setPlaybackSpeed(1)" aria-label="Playback speed 1x">1x</button>
+                    <button class="speed-btn" onclick="setPlaybackSpeed(1.5)" aria-label="Playback speed 1.5x">1.5x</button>
+                    <button class="speed-btn" onclick="setPlaybackSpeed(2)" aria-label="Playback speed 2x">2x</button>
+                    <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">Fullscreen</button>
+                    <span class="playback-time" id="playbackTimeDisplay">0:00 / 0:00</span>
+                </div>
+
+                <div class="overlay-controls">
+                    <div class="control-group">
+                        <span class="control-label">Video Source</span>
+                        <div class="toggle-group">
+                            <button class="toggle-btn" id="toggleOriginal" onclick="toggleOriginalVideo()">
+                                Show Original
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Overlay Layers</span>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" id="toggleBoxes" onclick="toggleLayer('boxes')">
+                                Bounding Boxes
+                            </button>
+                            <button class="toggle-btn active" id="toggleTrails" onclick="toggleLayer('trails')">
+                                Track Trails
+                            </button>
+                            <button class="toggle-btn active" id="toggleLabels" onclick="toggleLayer('labels')">
+                                Labels
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <span class="control-label">Team Colors</span>
+                        <div class="color-picker-group">
+                            <div class="color-picker-item">
+                                <label for="teamAColor">Team A</label>
+                                <input type="color" id="teamAColor" value="#0000ff" onchange="updateTeamColor('team_A', this.value)">
+                            </div>
+                            <div class="color-picker-item">
+                                <label for="teamBColor">Team B</label>
+                                <input type="color" id="teamBColor" value="#ff0000" onchange="updateTeamColor('team_B', this.value)">
+                            </div>
+                            <div class="color-picker-item">
+                                <label for="ballColor">Ball</label>
+                                <input type="color" id="ballColor" value="#ffff00" onchange="updateBallColor(this.value)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="timeline">
+                    <div class="timeline-time-labels">
+                        <span id="timelineLabelStart">0:00</span>
+                        <span id="timelineLabelEnd">0:00</span>
+                    </div>
                     <div class="timeline-bar" id="timelineBar">
                         <div class="timeline-progress" id="timelineProgress"></div>
+                        <div class="timeline-scrubber" id="timelineScrubber" style="left: 0%"></div>
+                        <div class="timeline-hover-tooltip" id="timelineHoverTooltip"></div>
                     </div>
                 </div>
             </div>
             
             <div class="events-panel">
+                <div id="teamMappingBar" class="team-mapping-bar" style="display:none;"></div>
                 <div class="score" id="scoreDisplay">
                     <div class="score-display">0 - 0</div>
                 </div>
-                
-                <h3>Events</h3>
+
+                <div class="events-header">
+                    <div class="collapsible-header" onclick="toggleCollapsible('events')">
+                        <h3>Events</h3>
+                        <span class="collapsible-chevron" id="chevron-events">&#9660;</span>
+                    </div>
+                    <div style="display:flex;gap:0.4rem;align-items:center;">
+                        <button class="section-export-btn" onclick="exportSectionJSON(events, 'events.json')" title="Export events as JSON">JSON</button>
+                        <button class="section-export-btn" onclick="exportSectionCSV(events, ['event_type','timestamp','confidence','status','source','user_notes'], 'events.csv')" title="Export events as CSV">CSV</button>
+                        <button class="add-event-btn" onclick="showAddEventModal()">+ Add Event</button>
+                    </div>
+                </div>
+                <div id="collapsible-events">
+                <div class="event-filters" id="eventFilters" role="toolbar" aria-label="Event filters">
+                    <button class="filter-btn active" data-filter="all" onclick="setEventFilter('all')" aria-label="Show all events">All <span class="filter-count" id="filterCountAll">0</span></button>
+                    <button class="filter-btn" data-filter="shot" onclick="setEventFilter('shot')" aria-label="Show shots only">Shots <span class="filter-count" id="filterCountShot">0</span></button>
+                    <button class="filter-btn" data-filter="goal" onclick="setEventFilter('goal')" aria-label="Show goals only">Goals <span class="filter-count" id="filterCountGoal">0</span></button>
+                    <div class="filter-separator"></div>
+                    <button class="filter-btn" data-filter="pending" onclick="setEventFilter('pending')" aria-label="Show pending events">Pending <span class="filter-count" id="filterCountPending">0</span></button>
+                    <button class="filter-btn" data-filter="confirmed" onclick="setEventFilter('confirmed')" aria-label="Show confirmed events">Confirmed <span class="filter-count" id="filterCountConfirmed">0</span></button>
+                    <button class="filter-btn" data-filter="rejected" onclick="setEventFilter('rejected')" aria-label="Show rejected events">Rejected <span class="filter-count" id="filterCountRejected">0</span></button>
+                </div>
                 <div id="eventsList"></div>
+                </div>
+
+                <div class="team-analytics-section">
+                    <div class="collapsible-header" onclick="toggleCollapsible('analytics')">
+                        <h3>Match Analytics</h3>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            <button class="section-export-btn" onclick="event.stopPropagation();exportSectionJSON(teamAnalyticsData, 'team_analytics.json')" title="Export analytics as JSON">JSON</button>
+                            <span class="collapsible-chevron" id="chevron-analytics">&#9660;</span>
+                        </div>
+                    </div>
+                    <div id="collapsible-analytics">
+                        <div class="match-stats-card">
+                            <div class="match-stats-card-header">
+                                <span class="match-stats-card-title">Match Stats</span>
+                                <button class="section-export-btn" onclick="exportSectionJSON(matchStatsData, 'match_stats.json')" title="Export match stats as JSON">JSON</button>
+                            </div>
+                            <div id="matchStatsContent">
+                                <p class="loading">No match stats data loaded</p>
+                            </div>
+                        </div>
+                        <div id="teamAnalyticsContent">
+                            <p class="loading">No team analytics data loaded</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="player-reels-section">
+                    <div class="player-reels-header">
+                        <div class="collapsible-header" onclick="toggleCollapsible('reels')">
+                            <h3>Player Reels</h3>
+                            <span class="collapsible-chevron" id="chevron-reels">&#9660;</span>
+                        </div>
+                        <span class="panel-note" id="playerReelsSummary">No reel data loaded</span>
+                    </div>
+                    <div id="collapsible-reels">
+                    <div class="player-reels-controls">
+                        <select id="reelTeamFilter" class="form-input" onchange="updatePlayerReelFilters()">
+                            <option value="all">Team: All</option>
+                            <option value="ours">Team: Ours</option>
+                            <option value="opponent">Team: Opponent</option>
+                            <option value="unknown">Team: Unknown</option>
+                        </select>
+                        <select id="reelSortBy" class="form-input" onchange="updatePlayerReelFilters()">
+                            <option value="best_score_desc">Sort: Best Score</option>
+                            <option value="segment_count_desc">Sort: Most Segments</option>
+                            <option value="name_asc">Sort: Name A-Z</option>
+                            <option value="player_id_asc">Sort: Player ID</option>
+                        </select>
+                        <input
+                            id="reelMinScore"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value="0"
+                            class="form-input"
+                            placeholder="Min score (0-1)"
+                            onchange="updatePlayerReelFilters()"
+                        >
+                        <input
+                            id="reelTopN"
+                            type="number"
+                            min="1"
+                            max="30"
+                            step="1"
+                            value="8"
+                            class="form-input"
+                            placeholder="Top N segments"
+                            onchange="updatePlayerReelFilters()"
+                        >
+                    </div>
+                    <div class="player-reels-export-controls">
+                        <div id="reelSelectedCount" class="identity-selected-count">0 selected</div>
+                        <button class="identity-btn" onclick="selectAllVisibleReelPlayers()">Select Visible</button>
+                        <button class="identity-btn" onclick="clearSelectedReelPlayers()">Clear Selection</button>
+                        <label class="identity-toggle">
+                            <input id="reelExportIncludeClips" type="checkbox" checked>
+                            Include clip files in ZIP
+                        </label>
+                        <button class="identity-btn" onclick="exportFilteredPlayerReelsPackage()">Export Reels ZIP</button>
+                    </div>
+                    <div id="playerReelsList">
+                        <p class="loading">Select a run to load player reel segments</p>
+                    </div>
+                    </div>
+                </div>
+
+                <div class="season-section">
+                    <div class="player-reels-header">
+                        <div class="collapsible-header" onclick="toggleCollapsible('season')">
+                            <h3>Season Trends</h3>
+                            <span class="collapsible-chevron" id="chevron-season">&#9660;</span>
+                        </div>
+                        <span class="panel-note" id="seasonSummaryStatus">No season report loaded</span>
+                    </div>
+                    <div id="collapsible-season">
+                    <div class="season-actions">
+                        <button class="identity-btn" onclick="loadCrossMatchReport(currentRun)">Refresh</button>
+                        <label class="identity-toggle">
+                            <input id="crossMatchIncludeTemplates" type="checkbox" checked>
+                            Include templates in ZIP
+                        </label>
+                        <button class="identity-btn primary" onclick="exportCrossMatchPackage()">Export Season ZIP</button>
+                    </div>
+                    <div class="season-downloads">
+                        <button class="identity-btn" onclick="downloadCrossMatchArtifact('report_json')">Download Report JSON</button>
+                        <button class="identity-btn" onclick="downloadCrossMatchArtifact('match_trends_csv')">Download Match Trends CSV</button>
+                        <button class="identity-btn" onclick="downloadCrossMatchArtifact('player_trends_csv')">Download Player Trends CSV</button>
+                        <button class="identity-btn" onclick="downloadCrossMatchArtifact('coach_template_md')">Download Coach Template</button>
+                        <button class="identity-btn" onclick="downloadCrossMatchArtifact('player_templates_md')">Download Player Templates</button>
+                    </div>
+                    <div id="seasonSummaryGrid" class="season-summary-grid">
+                        <p class="loading">Select a run to load season trends</p>
+                    </div>
+                    <div class="identity-subheader">Team Trends</div>
+                    <div id="seasonTeamTrends" class="season-scroll">
+                        <p class="loading">No team trend data loaded</p>
+                    </div>
+                    <div class="identity-subheader">Top Players</div>
+                    <div id="seasonTopPlayers" class="season-scroll">
+                        <p class="loading">No player trend data loaded</p>
+                    </div>
+                    <div class="identity-subheader">Recent Window</div>
+                    <div id="seasonRecentWindow" class="season-scroll">
+                        <p class="loading">No recent window data loaded</p>
+                    </div>
+                    </div>
+                </div>
+
+                <div class="identity-section">
+                    <div class="player-reels-header">
+                        <div class="collapsible-header" onclick="toggleCollapsible('identity')">
+                            <h3>Identity Review</h3>
+                            <span class="collapsible-chevron" id="chevron-identity">&#9660;</span>
+                        </div>
+                        <span class="panel-note" id="identitySummary">No identity data loaded</span>
+                    </div>
+
+                    <div id="collapsible-identity">
+                    <div class="identity-controls">
+                        <button class="identity-btn" onclick="refreshIdentityReview()">Refresh</button>
+                        <button class="identity-btn" onclick="previewRecomputeDiff()">Preview Recompute Diff</button>
+                        <button class="identity-btn" onclick="approvePreviewAndPersist()">Approve Preview -> Persist</button>
+                        <button class="identity-btn" onclick="undoLastIdentityEdit()">Undo Last Edit</button>
+                        <button class="identity-btn primary" onclick="recomputePlayerReelsFromIdentity()">Recompute Reels</button>
+                    </div>
+                    <div id="identityStatus" class="identity-status"></div>
+                    <div id="recomputePreview" class="identity-preview">Preview diff not generated yet</div>
+                    <div class="identity-subheader">Identity Suggestions</div>
+                    <div class="identity-suggestion-controls">
+                        <div id="suggestionsSelectedCount" class="identity-selected-count">0 selected</div>
+                        <input
+                            id="suggestionMinConfidence"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value="0.7"
+                            class="form-input"
+                            placeholder="Min confidence"
+                        >
+                        <label class="identity-toggle">
+                            <input id="preserveExistingClips" type="checkbox" checked>
+                            Preserve existing clips
+                        </label>
+                        <button class="identity-btn" onclick="loadIdentitySuggestions(currentRun)">Refresh Suggestions</button>
+                        <button class="identity-btn" onclick="selectAllPendingSuggestions()">Select Pending</button>
+                        <button class="identity-btn" onclick="clearSelectedSuggestions()">Clear</button>
+                        <button class="identity-btn primary" onclick="applySelectedSuggestions()">Apply Selected</button>
+                        <button class="identity-btn" onclick="applySuggestionsAndPreview()">Apply + Preview Diff</button>
+                        <button class="identity-btn primary" onclick="applySuggestionsAndRecompute()">Apply + Recompute</button>
+                    </div>
+                    <div id="identitySuggestionsList" class="identity-scroll">
+                        <p class="loading">No suggestions loaded</p>
+                    </div>
+                    <div id="identityEditsList" class="identity-edits">
+                        <p class="loading">No edit history loaded</p>
+                    </div>
+
+                    <div class="identity-subheader">Create Player (Split)</div>
+                    <div class="identity-inline-form">
+                        <input id="newPlayerName" type="text" class="form-input" placeholder="Player name">
+                        <input id="newPlayerJersey" type="number" class="form-input" placeholder="Jersey #">
+                        <select id="newPlayerTeam" class="form-input">
+                            <option value="">Team: Unknown</option>
+                            <option value="ours">Ours</option>
+                            <option value="opponent">Opponent</option>
+                        </select>
+                        <button class="identity-btn" onclick="createPlayerFromForm()">Add Player</button>
+                    </div>
+
+                    <div class="identity-subheader">Merge Players</div>
+                    <div class="identity-inline-form" style="grid-template-columns: 1fr 1fr auto;">
+                        <select id="mergeKeepPlayer" class="form-input"></select>
+                        <select id="mergeFromPlayer" class="form-input"></select>
+                        <button class="identity-btn" onclick="mergePlayersFromForm()">Merge</button>
+                    </div>
+
+                    <div class="identity-subheader">Player Metadata</div>
+                    <div id="identityPlayersList" class="identity-scroll">
+                        <p class="loading">Select a run to load players</p>
+                    </div>
+
+                    <div class="identity-subheader" style="display:flex;justify-content:space-between;align-items:center;">
+                        <span>Track Assignments</span>
+                        <div style="display:flex;gap:0.4rem;">
+                            <button class="section-export-btn" onclick="exportSectionJSON(identityReviewData.assignments, 'track_assignments.json')" title="Export assignments as JSON">JSON</button>
+                            <button class="section-export-btn" onclick="exportSectionCSV(identityReviewData.assignments, ['track_id','player_id','player_name','match_method','match_confidence','frame_start','frame_end'], 'track_assignments.csv')" title="Export assignments as CSV">CSV</button>
+                        </div>
+                    </div>
+                    <input
+                        id="assignmentSearch"
+                        type="text"
+                        class="form-input identity-search"
+                        placeholder="Filter assignments by track id or player name"
+                        oninput="updateAssignmentFilter()"
+                    >
+                    <div class="identity-bulk-controls">
+                        <div id="bulkSelectedCount" class="identity-selected-count">0 selected</div>
+                        <select id="bulkAssignPlayer" class="form-input">
+                            <option value="">Assign selected to...</option>
+                        </select>
+                        <button class="identity-btn" onclick="selectAllFilteredAssignments()">Select Filtered</button>
+                        <button class="identity-btn" onclick="clearSelectedAssignments()">Clear</button>
+                        <button class="identity-btn primary" onclick="applyBulkAssignment()">Apply</button>
+                    </div>
+                    <div id="identityAssignmentsList" class="identity-scroll">
+                        <p class="loading">Select a run to load assignments</p>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Event Modal -->
+        <div id="addEventModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="hideAddEventModal()">&times;</span>
+                <h3 style="color: var(--accent); margin-bottom: 1rem;">Add Manual Event</h3>
+                <form id="addEventForm" onsubmit="submitAddEvent(event)">
+                    <div class="form-group">
+                        <label for="eventType">Event Type</label>
+                        <select id="eventType" class="form-input" required>
+                            <option value="shot">Shot</option>
+                            <option value="goal">Goal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventTimestamp">Timestamp</label>
+                        <input type="text" id="eventTimestamp" class="form-input" readonly>
+                        <div class="form-hint">Current video position (seek video first)</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="eventNotes">Notes (optional)</label>
+                        <textarea id="eventNotes" class="form-input" rows="2" placeholder="Add any notes..."></textarea>
+                    </div>
+                    <button type="submit" class="submit-btn">Add Event</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="shortcutsModal" class="modal shortcuts-modal">
+            <div class="modal-content">
+                <span class="close" onclick="hideShortcutsModal()">&times;</span>
+                <h3 style="color: var(--accent); margin-bottom: 1rem;">Keyboard Shortcuts</h3>
+                <table class="shortcuts-table">
+                    <tr><td><kbd>Space</kbd></td><td>Play / Pause</td></tr>
+                    <tr><td><kbd>&#8592;</kbd> / <kbd>&#8594;</kbd></td><td>Seek -5s / +5s</td></tr>
+                    <tr><td><kbd>Shift</kbd>+<kbd>&#8592;</kbd> / <kbd>&#8594;</kbd></td><td>Step frame back / forward</td></tr>
+                    <tr><td><kbd>J</kbd> / <kbd>K</kbd> / <kbd>L</kbd></td><td>Rewind 10s / Play-pause / Forward 10s</td></tr>
+                    <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Decrease / Increase speed</td></tr>
+                    <tr><td><kbd>F</kbd></td><td>Toggle fullscreen</td></tr>
+                    <tr><td><kbd>M</kbd></td><td>Add event at current time</td></tr>
+                    <tr><td><kbd>Escape</kbd></td><td>Close any open modal</td></tr>
+                    <tr><td><kbd>1</kbd> - <kbd>9</kbd></td><td>Jump to Nth visible event</td></tr>
+                    <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+                </table>
+            </div>
+        </div>
+
+        </div><!-- /matchAnalysisView -->
+
+        <!-- ═══ Team Manager View ═══ -->
+        <div id="teamManagerView" style="display:none;">
+            <div class="team-manager-header">
+                <h2>Team Manager</h2>
+                <button class="identity-btn primary" onclick="showCreateTeamForm()">+ Create Team</button>
+            </div>
+            <div id="createTeamForm" class="team-create-form" style="display:none;">
+                <input id="newTeamName" type="text" class="form-input" placeholder="Team name" required style="flex:1;">
+                <input id="newTeamShortName" type="text" class="form-input" placeholder="Short name (optional)" style="width:140px;">
+                <button class="identity-btn primary" onclick="createTeam()">Create</button>
+                <button class="identity-btn" onclick="hideCreateTeamForm()">Cancel</button>
+            </div>
+            <div id="teamsList" class="teams-list">
+                <p class="loading">Loading teams...</p>
+            </div>
+            <div id="teamDetail" class="team-detail-panel" style="display:none;"></div>
+        </div>
+
+        <!-- ═══ Player Manager View ═══ -->
+        <div id="playerManagerView" style="display:none;">
+            <div class="team-manager-header">
+                <h2>Players</h2>
+                <button class="identity-btn primary" onclick="showCreatePlayerForm()">+ Add Player</button>
+            </div>
+            <div id="createPlayerForm" class="team-create-form" style="display:none;">
+                <input id="newPlayerName" type="text" class="form-input" placeholder="Name" style="flex:1;">
+                <input id="newPlayerNumber" type="number" class="form-input" placeholder="#" style="width:3.5rem;">
+                <select id="newPlayerTeam" class="form-input" style="width:140px;">
+                    <option value="">No team</option>
+                </select>
+                <select id="newPlayerHint" class="form-input" style="width:120px;">
+                    <option value="">No hint</option>
+                    <option value="ours">Ours</option>
+                    <option value="opponent">Opponent</option>
+                </select>
+                <button class="identity-btn primary" onclick="createPlayerFromManager()">Create</button>
+                <button class="identity-btn" onclick="hideCreatePlayerForm()">Cancel</button>
+            </div>
+            <div id="playersGrid" class="players-grid">
+                <p class="loading">Loading players...</p>
             </div>
         </div>
     </div>
-    
+
+    <!-- Global modals (outside all views so they work from any view) -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content confirm-modal-content">
+            <span class="close" onclick="hideConfirmModal()">&times;</span>
+            <p id="confirmModalMessage">Are you sure?</p>
+            <div class="confirm-modal-actions">
+                <button class="confirm-no" onclick="hideConfirmModal()">Cancel</button>
+                <button class="confirm-yes" id="confirmModalYes" onclick="confirmModalResolve()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clipModal" class="modal">
+        <div class="modal-content clip-modal-content">
+            <span class="close" onclick="hideClipModal()">&times;</span>
+            <h3 id="clipModalTitle" style="color: var(--accent); margin-bottom: 0.5rem;">Player Clip</h3>
+            <video id="clipPlayer" controls>
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
 </body>
 </html>
