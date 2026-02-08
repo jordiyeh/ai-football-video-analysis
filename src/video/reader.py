@@ -58,6 +58,7 @@ class VideoReader:
             ValueError: If video cannot be opened
         """
         self.video_path = Path(video_path)
+        self.cap = None
 
         if not self.video_path.exists():
             raise ValueError(f"Video file does not exist: {video_path}")
@@ -65,6 +66,8 @@ class VideoReader:
         self.cap = cv2.VideoCapture(str(video_path))
 
         if not self.cap.isOpened():
+            self.cap.release()
+            self.cap = None
             raise ValueError(f"Cannot open video: {video_path}")
 
         # Extract metadata
@@ -190,8 +193,10 @@ class VideoReader:
 
     def close(self) -> None:
         """Release video capture."""
-        if self.cap is not None:
-            self.cap.release()
+        cap = getattr(self, "cap", None)
+        if cap is not None:
+            cap.release()
+            self.cap = None
 
     def __enter__(self):
         """Context manager entry."""
