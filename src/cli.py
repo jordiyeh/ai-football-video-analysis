@@ -2016,6 +2016,116 @@ class EventDetectionStage(PipelineStage):
         return context
 
 
+class MatchStatsStage(PipelineStage):
+    """Stage E.2: Unified team-level match stats artifact."""
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__("match_stats", config)
+
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Build and persist match_stats.json from events and team analytics."""
+        from src.analytics import build_match_stats
+
+        output_dir = Path(context["output_dir"])
+        match_stats_path = output_dir / "match_stats.json"
+
+        if context.get("resume", False) and match_stats_path.exists():
+            self.console.print(
+                f"[bold yellow]✓ Using cached match stats from {match_stats_path.name}[/bold yellow]"
+            )
+            with open(match_stats_path) as f:
+                match_stats = json.load(f)
+
+            summary = match_stats.get("summary", {})
+            totals = match_stats.get("totals", {})
+            context["match_stats"] = match_stats
+            context["match_stats_path"] = str(match_stats_path)
+            context["match_stats_items_processed"] = int(summary.get("events_processed", 0))
+            context["match_stats_custom_metrics"] = {
+                "cached": True,
+                "teams_detected": len(summary.get("teams_detected", [])),
+                "shots": int(totals.get("shots", 0)),
+                "goals": int(totals.get("goals", 0)),
+                "passes": int(totals.get("passes", 0)),
+                "set_pieces": int(totals.get("set_pieces", 0)),
+                "events_without_team": int(summary.get("events_without_team", 0)),
+            }
+            return context
+
+        events = context.get("events", [])
+        tracks = context.get("tracks", [])
+
+        team_analytics = context.get("team_analytics")
+        if not isinstance(team_analytics, dict):
+            team_analytics_path = output_dir / "team_analytics.json"
+            if team_analytics_path.exists():
+                try:
+                    with open(team_analytics_path) as f:
+                        team_analytics = json.load(f)
+                except Exception:
+                    team_analytics = {}
+            else:
+                team_analytics = {}
+
+        video_metadata = context.get("video_metadata", {})
+        fps = float(video_metadata.get("fps", 30.0) or 30.0)
+
+        stats_payload = build_match_stats(
+            events=events,
+            team_analytics=team_analytics,
+            tracks=tracks,
+            fps=fps,
+        )
+
+        sources = {}
+        if (output_dir / "events.jsonl").exists():
+            sources["events"] = "events.jsonl"
+        if (output_dir / "team_analytics.json").exists():
+            sources["team_analytics"] = "team_analytics.json"
+        if (output_dir / "tracks.parquet").exists():
+            sources["tracks"] = "tracks.parquet"
+        elif (output_dir / "tracks.jsonl").exists():
+            sources["tracks"] = "tracks.jsonl"
+
+        match_stats_artifact = {
+            "schema_version": stats_payload.get("schema_version", "1.0"),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "video_id": Path(context["video_path"]).stem,
+            "summary": stats_payload.get("summary", {}),
+            "teams": stats_payload.get("teams", {}),
+            "totals": stats_payload.get("totals", {}),
+            "sources": sources,
+        }
+
+        with open(match_stats_path, "w") as f:
+            json.dump(match_stats_artifact, f, indent=2)
+
+        summary = match_stats_artifact.get("summary", {})
+        totals = match_stats_artifact.get("totals", {})
+
+        self.console.print(f"Saved match stats to: {match_stats_path}")
+        self.console.print(
+            "  Match stats totals: "
+            f"shots={int(totals.get('shots', 0))}, "
+            f"goals={int(totals.get('goals', 0))}, "
+            f"passes={int(totals.get('passes', 0))}, "
+            f"set_pieces={int(totals.get('set_pieces', 0))}"
+        )
+
+        context["match_stats"] = match_stats_artifact
+        context["match_stats_path"] = str(match_stats_path)
+        context["match_stats_items_processed"] = int(summary.get("events_processed", 0))
+        context["match_stats_custom_metrics"] = {
+            "teams_detected": len(summary.get("teams_detected", [])),
+            "shots": int(totals.get("shots", 0)),
+            "goals": int(totals.get("goals", 0)),
+            "passes": int(totals.get("passes", 0)),
+            "set_pieces": int(totals.get("set_pieces", 0)),
+            "events_without_team": int(summary.get("events_without_team", 0)),
+        }
+        return context
+
+
 class HighlightGenerationStage(PipelineStage):
     """Stage E.5: Generate highlight segments from event/audio/action signals."""
 
@@ -2866,6 +2976,7 @@ def main(video: str, output: str, config: str | None, resume: bool, no_overlay: 
     pipeline.add_stage(PlayerIdentityStage(pipeline_config))
     pipeline.add_stage(TeamAnalyticsStage(pipeline_config))
     pipeline.add_stage(EventDetectionStage(pipeline_config))
+    pipeline.add_stage(MatchStatsStage(pipeline_config))
     pipeline.add_stage(HighlightGenerationStage(pipeline_config))
     pipeline.add_stage(PlayerHighlightReelsStage(pipeline_config))
     pipeline.add_stage(CrossMatchReportingStage(pipeline_config))

@@ -281,6 +281,7 @@ class Pipeline:
             "field_normalization": ["field_normalization.json"],
             "field_viewports": ["field_viewports.parquet"],
             "team_analytics": ["team_analytics.json"],
+            "match_stats": ["match_stats.json"],
             "team_possession_timeline": ["team_possession_timeline.csv"],
             "team_pass_network": ["team_pass_network.csv"],
             "team_pressing_timeline": ["team_pressing_timeline.csv"],
@@ -374,6 +375,7 @@ class Pipeline:
         highlight_metrics = context.get("highlight_generation_custom_metrics", {})
         player_reel_metrics = context.get("player_highlight_reels_custom_metrics", {})
         team_metrics = context.get("team_analytics_custom_metrics", {})
+        match_stats_metrics = context.get("match_stats_custom_metrics", {})
         cross_match_metrics = context.get("cross_match_reporting_custom_metrics", {})
         event_type_counts = self._event_type_counts(context.get("events"))
         set_piece_count = sum(
@@ -452,6 +454,7 @@ class Pipeline:
                 "passes_inferred": team_metrics.get("passes_inferred"),
                 "cross_match_matches": cross_match_metrics.get("matches_analyzed"),
                 "cross_match_players": cross_match_metrics.get("unique_players"),
+                "match_stats_teams": match_stats_metrics.get("teams_detected"),
             },
             "score": {
                 "final_score": final_score,
@@ -517,6 +520,7 @@ class Pipeline:
                 "has_highlights": "highlights" in artifacts,
                 "has_player_reels": "player_highlights" in artifacts,
                 "has_team_analytics": "team_analytics" in artifacts,
+                "has_match_stats": "match_stats" in artifacts,
                 "has_cross_match_report": "cross_match_report" in artifacts,
             },
             "preferred_video_artifact": "overlay.mp4"
