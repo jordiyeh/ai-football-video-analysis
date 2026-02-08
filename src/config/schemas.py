@@ -178,6 +178,8 @@ class CrossMatchReportingConfig(BaseModel):
     last_n_window: int = 5
     top_players: int = 15
     min_player_segment_score: float = 0.25
+    match_type_filter: list[str] = Field(default_factory=list)
+    formation_filter: list[str] = Field(default_factory=list)
 
 
 class InterpolationConfig(BaseModel):

@@ -2896,6 +2896,12 @@ class CrossMatchReportingStage(PipelineStage):
                 "possession_share_opponent",
                 "high_press_rate_ours",
                 "high_press_rate_opponent",
+                "match_type",
+                "formation",
+                "ours_goals",
+                "opponent_goals",
+                "result",
+                "result_source",
             ],
         )
         self._write_csv(
