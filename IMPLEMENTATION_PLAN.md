@@ -50,6 +50,7 @@
 
 - [x] [MEDIUM] Step 19 — Video UX parity: Add speedrun playback mode (skip low-action windows) and multi-view layout toggle in `src/ui/static/app.js` and `src/ui/server.py`. Test: `pytest tests/unit/test_ui_server.py -q`
 - [x] [HIGH] Step 20 — Final regression + contract validation: Full artifact contract validation for all required outputs, ensure schema versions and cache/resume behavior are consistent. Test: `pytest tests/unit -q && pytest tests/integration -q && pytest tests/golden -q`
+- [x] [HIGH] Step 21 — VideoReader cleanup regression fix: Ensure `VideoReader` cleanup is safe when initialization exits before `cap` exists; add regression coverage. Test: `pytest tests/unit/test_video_reader_cleanup.py -q && pytest tests/unit -q && pytest tests/integration -q && pytest tests/golden -q`
 
 ## Cross-Phase Quality Gates
 
