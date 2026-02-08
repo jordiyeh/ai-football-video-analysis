@@ -120,6 +120,64 @@ class TeamConfig(BaseModel):
     # Optional team color hints (hex format)
     our_team_color: str | None = None
     opponent_color: str | None = None
+    # Persistent team pre-selection (set via UI or CLI)
+    home_team_id: int | None = None
+    away_team_id: int | None = None
+    home_kit: str = "home"
+    away_kit: str = "home"
+
+
+class FieldNormalizationConfig(BaseModel):
+    """Field-view normalization configuration (zoom-aware norm_xy)."""
+
+    enabled: bool = True
+    min_players_per_frame: int = 6
+    player_percentile_low: float = 0.10
+    player_percentile_high: float = 0.90
+    margin_ratio: float = 0.12
+    smoothing_alpha: float = 0.25
+    min_viewport_width_ratio: float = 0.35
+    min_viewport_height_ratio: float = 0.35
+    clip_norm: bool = True
+
+
+class TeamAnalyticsConfig(BaseModel):
+    """Team-level analytics configuration (possession/territory/pass/pressing)."""
+
+    enabled: bool = True
+    use_norm_coordinates: bool = True
+
+    # Possession / pass inference.
+    possession_max_ball_distance_px: float = 140.0
+    possession_smoothing_frames: int = 3
+    possession_min_stable_frames: int = 3
+    possession_min_segment_frames: int = 4
+    pass_min_gap_seconds: float = 0.15
+    pass_max_gap_seconds: float = 2.5
+
+    # Territory occupancy bins.
+    territory_x_bins: int = 3
+    territory_y_bins: int = 3
+
+    # Pressing proxy.
+    pressure_radius_norm: float = 0.10
+    high_press_threshold: float = 0.65
+    high_press_min_frames: int = 8
+
+    # Optional identity confidence threshold for track -> player link usage.
+    min_assignment_confidence: float = 0.6
+
+
+class CrossMatchReportingConfig(BaseModel):
+    """Cross-match reporting/export configuration."""
+
+    enabled: bool = True
+    runs_root: str | None = None  # Defaults to current run parent directory
+    include_current_run: bool = True
+    max_runs: int = 60
+    last_n_window: int = 5
+    top_players: int = 15
+    min_player_segment_score: float = 0.25
 
 
 class InterpolationConfig(BaseModel):
@@ -241,6 +299,7 @@ class EventsConfig(BaseModel):
     detect_shots: bool = True
     detect_goals: bool = True
     detect_passes: bool = False  # Phase 2+
+    detect_set_pieces: bool = True
     shot_velocity_threshold: float = 8.0  # pixels/frame (lower = more sensitive)
     goal_confidence_threshold: float = 0.5  # Lower threshold for more goal candidates
     min_shot_duration_frames: int = 2  # Minimum frames for high-speed segment
@@ -249,6 +308,86 @@ class EventsConfig(BaseModel):
     interpolation: InterpolationConfig = Field(default_factory=InterpolationConfig)
     alternative_shot: AlternativeShotDetectionConfig = Field(default_factory=AlternativeShotDetectionConfig)
     goal_region: GoalRegionDetectionConfig = Field(default_factory=GoalRegionDetectionConfig)
+
+
+class HighlightEventSignalConfig(BaseModel):
+    """Event-driven highlight scoring configuration."""
+
+    include_goals: bool = True
+    include_shots: bool = True
+    goal_weight: float = 1.0
+    shot_weight: float = 0.7
+    min_confidence: float = 0.2
+
+
+class HighlightAudioSignalConfig(BaseModel):
+    """Audio-driven highlight scoring configuration."""
+
+    enabled: bool = True
+    sample_rate: int = 2000
+    window_seconds: float = 1.0
+    hop_seconds: float = 0.25
+    min_z_score: float = 2.0
+    min_abs_rms: float = 0.01
+    min_gap_seconds: float = 2.0
+    max_spikes: int = 120
+    weight: float = 0.45
+
+
+class HighlightActionSignalConfig(BaseModel):
+    """Action-driven highlight scoring configuration."""
+
+    enabled: bool = True
+    min_speed_pixels_per_sec: float = 220.0
+    player_pressure_radius: float = 120.0
+    score_quantile: float = 0.9
+    min_candidate_score: float = 0.45
+    max_candidates: int = 120
+    weight: float = 0.55
+
+
+class HighlightSegmentConfig(BaseModel):
+    """Highlight segment selection configuration."""
+
+    pre_roll_seconds: float = 8.0
+    post_roll_seconds: float = 12.0
+    merge_gap_seconds: float = 4.0
+    top_n: int = 20
+    min_segment_score: float = 0.4
+
+
+class HighlightExportConfig(BaseModel):
+    """Highlight export configuration."""
+
+    save_clips: bool = False
+    clips_dir: str = "clips"
+    clip_video_codec: str = "libx264"
+    clip_audio_codec: str = "aac"
+
+
+class PlayerReelsConfig(BaseModel):
+    """Per-player reel generation configuration."""
+
+    enabled: bool = True
+    max_segments_per_player: int = 8
+    min_presence_seconds: float = 1.5
+    min_player_segment_score: float = 0.2
+    min_assignment_confidence: float = 0.6
+    include_suggested_assignments: bool = True
+    save_clips: bool = False
+    clips_dir: str = "player_clips"
+
+
+class HighlightsConfig(BaseModel):
+    """Automatic highlight generation configuration."""
+
+    enabled: bool = True
+    event: HighlightEventSignalConfig = Field(default_factory=HighlightEventSignalConfig)
+    audio: HighlightAudioSignalConfig = Field(default_factory=HighlightAudioSignalConfig)
+    action: HighlightActionSignalConfig = Field(default_factory=HighlightActionSignalConfig)
+    segment: HighlightSegmentConfig = Field(default_factory=HighlightSegmentConfig)
+    export: HighlightExportConfig = Field(default_factory=HighlightExportConfig)
+    player_reels: PlayerReelsConfig = Field(default_factory=PlayerReelsConfig)
 
 
 class OverlayConfig(BaseModel):
@@ -286,6 +425,70 @@ class ReIDConfig(BaseModel):
     cache_dir: str = "models"
 
 
+class ProfileIngestionConfig(BaseModel):
+    """Profile ingestion configuration for external player profile bundles."""
+
+    enabled: bool = False
+    profiles_root: str | None = None
+    recursive_image_scan: bool = False
+    image_extensions: list[str] = Field(
+        default_factory=lambda: [".jpg", ".jpeg", ".png", ".webp"]
+    )
+    # Build body-embedding gallery from profile photos (same OSNet space as track embeddings)
+    enable_body_embedding_seed: bool = True
+    max_images_per_profile_for_reid: int = 5
+    min_profile_crops_for_seed: int = 2
+    detector_confidence_threshold: float = 0.3
+    fallback_full_image: bool = True
+    # Fusion thresholds for profile-evidence override/boost
+    profile_match_enabled: bool = True
+    profile_match_auto_threshold: float = 0.82
+    profile_match_suggest_threshold: float = 0.68
+    profile_override_margin: float = 0.05
+    profile_agreement_bonus: float = 0.05
+
+
+class IdentityFaceEvidenceConfig(BaseModel):
+    """Face-evidence configuration for multimodal identity fusion."""
+
+    enabled: bool = True
+    max_images_per_profile: int = 5
+    min_profile_face_images: int = 1
+    min_track_support_frames: int = 2
+    suggest_threshold: float = 0.68
+    override_margin: float = 0.08
+    agreement_bonus: float = 0.04
+
+
+class IdentityJerseyOCRConfig(BaseModel):
+    """Jersey OCR configuration for multimodal identity fusion."""
+
+    enabled: bool = True
+    min_ocr_confidence: float = 0.45
+    min_track_support_frames: int = 2
+    override_margin: float = 0.12
+    agreement_bonus: float = 0.03
+
+
+class IdentityLockingConfig(BaseModel):
+    """Substitution-aware lock/unlock configuration."""
+
+    enabled: bool = True
+    lock_confidence_threshold: float = 0.82
+    overlap_conflict_frames: int = 45
+    substitution_gap_frames: int = 150
+    demote_conflicting_auto: bool = True
+
+
+class IdentityMultimodalConfig(BaseModel):
+    """Multimodal dynamic tagging configuration."""
+
+    enabled: bool = True
+    face: IdentityFaceEvidenceConfig = Field(default_factory=IdentityFaceEvidenceConfig)
+    jersey_ocr: IdentityJerseyOCRConfig = Field(default_factory=IdentityJerseyOCRConfig)
+    locking: IdentityLockingConfig = Field(default_factory=IdentityLockingConfig)
+
+
 class IdentityConfig(BaseModel):
     """Player identity persistence configuration."""
 
@@ -297,6 +500,8 @@ class IdentityConfig(BaseModel):
     auto_match_threshold: float = 0.85  # Auto-assign player above this similarity
     suggest_threshold: float = 0.70  # Suggest match above this similarity
     new_player_threshold: float = 0.60  # Create new player below this similarity
+    profile_ingestion: ProfileIngestionConfig = Field(default_factory=ProfileIngestionConfig)
+    multimodal: IdentityMultimodalConfig = Field(default_factory=IdentityMultimodalConfig)
 
 
 class PipelineConfig(BaseModel):
@@ -306,7 +511,11 @@ class PipelineConfig(BaseModel):
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     team: TeamConfig = Field(default_factory=TeamConfig)
+    field: FieldNormalizationConfig = Field(default_factory=FieldNormalizationConfig)
+    team_analytics: TeamAnalyticsConfig = Field(default_factory=TeamAnalyticsConfig)
+    cross_match: CrossMatchReportingConfig = Field(default_factory=CrossMatchReportingConfig)
     events: EventsConfig = Field(default_factory=EventsConfig)
+    highlights: HighlightsConfig = Field(default_factory=HighlightsConfig)
     overlay: OverlayConfig = Field(default_factory=OverlayConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     reid: ReIDConfig = Field(default_factory=ReIDConfig)
