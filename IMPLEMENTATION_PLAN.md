@@ -43,7 +43,7 @@
 
 ### Phase 6: Optional Integrations
 
-- [ ] [MEDIUM] Step 17 — Coach assist (opt-in): Create `src/analytics/coach_assist.py` with provider abstraction, disabled by default, no cloud calls unless explicitly enabled. Test: `pytest tests/unit -q -k "coach_assist or analytics"`
+- [x] [MEDIUM] Step 17 — Coach assist (opt-in): Create `src/analytics/coach_assist.py` with provider abstraction, disabled by default, no cloud calls unless explicitly enabled. Test: `pytest tests/unit -q -k "coach_assist or analytics"`
 - [ ] [MEDIUM] Step 18 — Veo API integration client (opt-in): Create `src/integrations/veo_api.py` with auth + basic read/write operations behind interface boundaries. Test: `pytest tests/unit -q -k "veo_api or integration_client"`
 
 ### Phase 7: Video UX and Final Hardening

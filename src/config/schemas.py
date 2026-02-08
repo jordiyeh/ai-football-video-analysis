@@ -182,6 +182,16 @@ class CrossMatchReportingConfig(BaseModel):
     formation_filter: list[str] = Field(default_factory=list)
 
 
+class CoachAssistConfig(BaseModel):
+    """Coach assist generation configuration."""
+
+    enabled: bool = False
+    provider: Literal["heuristic", "cloud"] = "heuristic"
+    allow_cloud: bool = False
+    max_insights: int = 5
+    min_confidence: float = 0.45
+
+
 class InterpolationConfig(BaseModel):
     """Ball trajectory interpolation configuration."""
 
@@ -517,6 +527,7 @@ class PipelineConfig(BaseModel):
     field: FieldNormalizationConfig = Field(default_factory=FieldNormalizationConfig)
     team_analytics: TeamAnalyticsConfig = Field(default_factory=TeamAnalyticsConfig)
     cross_match: CrossMatchReportingConfig = Field(default_factory=CrossMatchReportingConfig)
+    coach_assist: CoachAssistConfig = Field(default_factory=CoachAssistConfig)
     events: EventsConfig = Field(default_factory=EventsConfig)
     highlights: HighlightsConfig = Field(default_factory=HighlightsConfig)
     overlay: OverlayConfig = Field(default_factory=OverlayConfig)

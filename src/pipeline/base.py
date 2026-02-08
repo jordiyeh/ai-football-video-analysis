@@ -304,6 +304,7 @@ class Pipeline:
             "team_analytics": ["team_analytics.json"],
             "player_analytics": ["player_analytics.json"],
             "match_stats": ["match_stats.json"],
+            "coach_assist": ["coach_assist.json"],
             "team_possession_timeline": ["team_possession_timeline.csv"],
             "team_pass_network": ["team_pass_network.csv"],
             "team_pressing_timeline": ["team_pressing_timeline.csv"],
@@ -399,6 +400,7 @@ class Pipeline:
         player_analytics_metrics = context.get("player_analytics_custom_metrics", {})
         team_metrics = context.get("team_analytics_custom_metrics", {})
         match_stats_metrics = context.get("match_stats_custom_metrics", {})
+        coach_assist_metrics = context.get("coach_assist_custom_metrics", {})
         cross_match_metrics = context.get("cross_match_reporting_custom_metrics", {})
         event_type_counts = self._event_type_counts(context.get("events"))
         set_piece_count = sum(
@@ -496,6 +498,7 @@ class Pipeline:
                 "cross_match_matches": cross_match_metrics.get("matches_analyzed"),
                 "cross_match_players": cross_match_metrics.get("unique_players"),
                 "match_stats_teams": match_stats_metrics.get("teams_detected"),
+                "coach_assist_insights": coach_assist_metrics.get("insights"),
             },
             "score": {
                 "final_score": final_score,
@@ -563,6 +566,7 @@ class Pipeline:
                 "has_player_analytics": "player_analytics" in artifacts,
                 "has_team_analytics": "team_analytics" in artifacts,
                 "has_match_stats": "match_stats" in artifacts,
+                "has_coach_assist": "coach_assist" in artifacts,
                 "has_cross_match_report": "cross_match_report" in artifacts,
             },
             "preferred_video_artifact": "overlay.mp4"

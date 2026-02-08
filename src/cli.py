@@ -2388,6 +2388,138 @@ class MatchStatsStage(PipelineStage):
         return context
 
 
+class CoachAssistStage(PipelineStage):
+    """Stage E.3: Optional coach-assist tactical insight generation."""
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__("coach_assist", config)
+
+    @staticmethod
+    def _load_json(path: Path) -> dict[str, Any]:
+        """Load JSON file when available, else return empty dict."""
+        if not path.exists():
+            return {}
+        try:
+            with open(path) as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            return {}
+        return {}
+
+    @staticmethod
+    def _load_events(path: Path) -> list[dict[str, Any]]:
+        """Load events JSONL rows when available, else empty list."""
+        if not path.exists():
+            return []
+        rows: list[dict[str, Any]] = []
+        try:
+            with open(path) as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    row = json.loads(line)
+                    if isinstance(row, dict):
+                        rows.append(row)
+        except Exception:
+            return []
+        return rows
+
+    def run(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Build and persist coach_assist.json when feature is explicitly enabled."""
+        cfg = self.config.coach_assist
+        output_dir = Path(context["output_dir"])
+        artifact_path = output_dir / "coach_assist.json"
+
+        if not cfg.enabled:
+            self.console.print("Coach assist disabled, skipping")
+            context["coach_assist_items_processed"] = 0
+            context["coach_assist_custom_metrics"] = {
+                "enabled": False,
+                "allow_cloud": bool(cfg.allow_cloud),
+            }
+            return context
+
+        if context.get("resume", False) and artifact_path.exists():
+            self.console.print(
+                f"[bold yellow]✓ Using cached coach assist report from {artifact_path.name}[/bold yellow]"
+            )
+            with open(artifact_path) as f:
+                artifact = json.load(f)
+
+            summary = artifact.get("summary", {})
+            insight_count = int(summary.get("insights_generated", len(artifact.get("insights", []))))
+            context["coach_assist"] = artifact
+            context["coach_assist_path"] = str(artifact_path)
+            context["coach_assist_items_processed"] = insight_count
+            context["coach_assist_custom_metrics"] = {
+                "cached": True,
+                "status": summary.get("status"),
+                "provider": artifact.get("provider"),
+                "insights": insight_count,
+                "cloud_used": bool(summary.get("cloud_used", False)),
+            }
+            return context
+
+        from src.analytics import build_coach_assist_report
+
+        match_stats = context.get("match_stats")
+        if not isinstance(match_stats, dict):
+            match_stats = self._load_json(output_dir / "match_stats.json")
+
+        team_analytics = context.get("team_analytics")
+        if not isinstance(team_analytics, dict):
+            team_analytics = self._load_json(output_dir / "team_analytics.json")
+
+        events = context.get("events")
+        event_rows: list[dict[str, Any]]
+        if isinstance(events, list):
+            event_rows = [row for row in events if isinstance(row, dict)]
+        else:
+            event_rows = self._load_events(output_dir / "events.jsonl")
+
+        artifact = build_coach_assist_report(
+            match_stats=match_stats,
+            team_analytics=team_analytics,
+            events=event_rows,
+            config=cfg,
+        )
+        artifact["generated_at"] = datetime.now(timezone.utc).isoformat()
+        artifact["video_id"] = Path(context["video_path"]).stem
+        artifact["sources"] = {
+            "match_stats": "match_stats.json" if (output_dir / "match_stats.json").exists() else None,
+            "team_analytics": "team_analytics.json" if (output_dir / "team_analytics.json").exists() else None,
+            "events": "events.jsonl" if (output_dir / "events.jsonl").exists() else None,
+        }
+
+        with open(artifact_path, "w") as f:
+            json.dump(artifact, f, indent=2)
+
+        summary = artifact.get("summary", {})
+        insight_count = int(summary.get("insights_generated", len(artifact.get("insights", []))))
+
+        self.console.print(f"Saved coach assist report to: {artifact_path}")
+        self.console.print(
+            "  Coach assist summary: "
+            f"status={summary.get('status')}, "
+            f"provider={artifact.get('provider')}, "
+            f"insights={insight_count}"
+        )
+
+        context["coach_assist"] = artifact
+        context["coach_assist_path"] = str(artifact_path)
+        context["coach_assist_items_processed"] = insight_count
+        context["coach_assist_custom_metrics"] = {
+            "status": summary.get("status"),
+            "provider": artifact.get("provider"),
+            "insights": insight_count,
+            "cloud_used": bool(summary.get("cloud_used", False)),
+        }
+        return context
+
+
 class HighlightGenerationStage(PipelineStage):
     """Stage E.5: Generate highlight segments from event/audio/action signals."""
 
@@ -3246,6 +3378,7 @@ def main(video: str, output: str, config: str | None, resume: bool, no_overlay: 
     pipeline.add_stage(EventDetectionStage(pipeline_config))
     pipeline.add_stage(PlayerAnalyticsStage(pipeline_config))
     pipeline.add_stage(MatchStatsStage(pipeline_config))
+    pipeline.add_stage(CoachAssistStage(pipeline_config))
     pipeline.add_stage(HighlightGenerationStage(pipeline_config))
     pipeline.add_stage(PlayerHighlightReelsStage(pipeline_config))
     pipeline.add_stage(CrossMatchReportingStage(pipeline_config))
