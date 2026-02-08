@@ -9,7 +9,7 @@
 ### Phase 0: Baseline Hardening and Gap Matrix
 
 - [x] [HIGH] Step 00 — Stabilize test harness: Fix pytest collection reliability (Torch import crash on collection). Ensure tests that do not require model loading can run. Test: `pytest --collect-only -q` and `pytest tests/unit/test_config.py tests/unit/test_pipeline_base.py -q`
-- [ ] [HIGH] Step 01 — Create guide-to-code gap matrix: Add `docs/veo_guide_gap_matrix.md` mapping each Veo guide feature to implemented/partial/missing status with current module paths. Test: `test -f docs/veo_guide_gap_matrix.md`
+- [x] [HIGH] Step 01 — Create guide-to-code gap matrix: Add `docs/veo_guide_gap_matrix.md` mapping each Veo guide feature to implemented/partial/missing status with current module paths. Test: `test -f docs/veo_guide_gap_matrix.md`
 
 ### Phase 1: Event Detection Parity
 
