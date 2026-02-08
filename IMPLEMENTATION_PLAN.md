@@ -33,7 +33,7 @@
 
 ### Phase 4: Tagging and Annotation System
 
-- [ ] [HIGH] Step 13 — DB migration for tags + match metadata: Extend SQLite schema in `src/identity/database.py` with match metadata table and tags table, add idempotent migrations. Test: `pytest tests/unit/test_identity_db.py -q`
+- [x] [HIGH] Step 13 — DB migration for tags + match metadata: Extend SQLite schema in `src/identity/database.py` with match metadata table and tags table, add idempotent migrations. Test: `pytest tests/unit/test_identity_db.py -q`
 - [ ] [HIGH] Step 14 — Tagging API + UI flows: Add tags CRUD/filter endpoints in `src/ui/server.py`, add manual tagging and filtering controls in `src/ui/static/app.js`. Test: `pytest tests/unit/test_ui_server.py -q`
 
 ### Phase 5: Player and Season Analytics
