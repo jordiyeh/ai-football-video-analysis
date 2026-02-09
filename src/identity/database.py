@@ -249,6 +249,18 @@ class PlayerDatabase:
             )
         """)
 
+        # Column migrations kept idempotent for existing databases.
+        # Run these before dependent index creation so legacy schemas upgrade safely.
+        self._ensure_column("players", "team_id", "INTEGER")
+        self._ensure_column("players", "photo_path", "TEXT")
+        self._ensure_column("teams", "logo_path", "TEXT")
+        self._ensure_column("match_metadata", "extra_json", "TEXT")
+        self._ensure_column("tags", "category", "TEXT NOT NULL DEFAULT 'general'")
+        self._ensure_column("tags", "metadata_json", "TEXT")
+        self._ensure_column("tags", "source", "TEXT NOT NULL DEFAULT 'manual'")
+        self._ensure_column("tags", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        self._ensure_column("tags", "notes", "TEXT")
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_tags_run_name
             ON tags(run_name)
@@ -265,17 +277,6 @@ class PlayerDatabase:
             CREATE INDEX IF NOT EXISTS idx_tags_time
             ON tags(start_time, end_time)
         """)
-
-        # Column migrations kept idempotent for existing databases.
-        self._ensure_column("players", "team_id", "INTEGER")
-        self._ensure_column("players", "photo_path", "TEXT")
-        self._ensure_column("teams", "logo_path", "TEXT")
-        self._ensure_column("match_metadata", "extra_json", "TEXT")
-        self._ensure_column("tags", "category", "TEXT NOT NULL DEFAULT 'general'")
-        self._ensure_column("tags", "metadata_json", "TEXT")
-        self._ensure_column("tags", "source", "TEXT NOT NULL DEFAULT 'manual'")
-        self._ensure_column("tags", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        self._ensure_column("tags", "notes", "TEXT")
 
         # Create schema_version table
         cursor.execute("""

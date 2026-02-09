@@ -1,5 +1,6 @@
 """Unit tests for player identity database."""
 
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -580,3 +581,38 @@ class TestMatchMetadataAndTags:
                 assert len(tag_rows) == 1
                 assert metadata_rows[0].run_name == "run-1"
                 assert tag_rows[0].label == "goal"
+
+    def test_legacy_tags_table_migrates_before_index_creation(self):
+        """Legacy tags tables without category/source columns should migrate cleanly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy_tags.db"
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE tags (
+                    tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_name TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    start_time REAL,
+                    end_time REAL,
+                    frame_idx INTEGER,
+                    track_id INTEGER,
+                    player_id INTEGER,
+                    team_id INTEGER,
+                    confidence REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.commit()
+            conn.close()
+
+            with PlayerDatabase(db_path) as db:
+                tag = db.create_tag(run_name="run-legacy", label="goal", start_time=1.0)
+                assert tag.category == "general"
+                assert tag.source == "manual"
+
+            with PlayerDatabase(db_path) as db:
+                rows = db.list_tags(run_name="run-legacy")
+                assert len(rows) == 1
