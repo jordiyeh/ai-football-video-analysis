@@ -152,6 +152,10 @@ class TeamAnalyticsConfig(BaseModel):
     possession_smoothing_frames: int = 3
     possession_min_stable_frames: int = 3
     possession_min_segment_frames: int = 4
+    possession_minute_bucket_seconds: float = 60.0
+    possession_phase_boundaries_norm_x: list[float] = Field(
+        default_factory=lambda: [0.33, 0.67]
+    )
     pass_min_gap_seconds: float = 0.15
     pass_max_gap_seconds: float = 2.5
 

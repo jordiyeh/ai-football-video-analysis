@@ -8,6 +8,10 @@ from typing import Any
 
 
 UNKNOWN_TEAM = "unknown"
+PHASE_BUILD_UP = "build_up"
+PHASE_MIDDLE_THIRD = "middle_third"
+PHASE_FINAL_THIRD = "final_third"
+POSSESSION_PHASES = (PHASE_BUILD_UP, PHASE_MIDDLE_THIRD, PHASE_FINAL_THIRD)
 
 
 def _cfg_value(config: Any, key: str, default: Any) -> Any:
@@ -232,6 +236,283 @@ def _build_assignment_index(
     return assignment_index
 
 
+def _normalize_phase_boundaries(raw_value: Any) -> tuple[float, float]:
+    """Validate/normalize phase boundaries from config."""
+    default = (0.33, 0.67)
+    if not isinstance(raw_value, list | tuple) or len(raw_value) < 2:
+        return default
+
+    parsed: list[float] = []
+    for value in raw_value[:2]:
+        parsed_value = _safe_float(value, default=-1.0)
+        if 0.0 < parsed_value < 1.0:
+            parsed.append(parsed_value)
+    if len(parsed) < 2:
+        return default
+
+    lower, upper = sorted(parsed[:2])
+    if upper - lower < 0.05:
+        return default
+    return (lower, upper)
+
+
+def _infer_team_phase_directions(
+    team_labels: list[str],
+    possession_segments: list[dict[str, Any]],
+    possession_timeline: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Infer per-team attacking direction for build-up/final-third labeling."""
+    votes: dict[str, float] = defaultdict(float)
+    for segment in possession_segments:
+        team = str(segment.get("owner_team", UNKNOWN_TEAM))
+        if team == UNKNOWN_TEAM:
+            continue
+        start_x = segment.get("start_norm_x")
+        end_x = segment.get("end_norm_x")
+        if start_x is None or end_x is None:
+            continue
+        frames = max(1, int(segment.get("frames", 1)))
+        votes[team] += (float(end_x) - float(start_x)) * frames
+
+    means_sum: dict[str, float] = defaultdict(float)
+    means_count: dict[str, int] = defaultdict(int)
+    for row in possession_timeline:
+        team = str(row.get("owner_team", UNKNOWN_TEAM))
+        if team == UNKNOWN_TEAM:
+            continue
+        owner_x = row.get("owner_norm_x")
+        if owner_x is None:
+            continue
+        means_sum[team] += float(owner_x)
+        means_count[team] += 1
+
+    directions: dict[str, dict[str, Any]] = {}
+    unresolved: set[str] = set()
+    for team in team_labels:
+        vote = float(votes.get(team, 0.0))
+        mean_owner_norm_x = (
+            means_sum[team] / means_count[team]
+            if means_count.get(team, 0) > 0
+            else None
+        )
+        if abs(vote) >= 1e-4:
+            directions[team] = {
+                "direction_sign": 1 if vote > 0 else -1,
+                "method": "segment_delta",
+                "delta_vote": vote,
+                "mean_owner_norm_x": mean_owner_norm_x,
+            }
+        else:
+            unresolved.add(team)
+            directions[team] = {
+                "direction_sign": None,
+                "method": None,
+                "delta_vote": vote,
+                "mean_owner_norm_x": mean_owner_norm_x,
+            }
+
+    if len(unresolved) >= 2:
+        centroid_candidates = [
+            (team, directions[team]["mean_owner_norm_x"])
+            for team in unresolved
+            if directions[team]["mean_owner_norm_x"] is not None
+        ]
+        if len(centroid_candidates) >= 2:
+            centroid_candidates.sort(key=lambda item: float(item[1]))
+            left_team = centroid_candidates[0][0]
+            right_team = centroid_candidates[-1][0]
+            if left_team != right_team:
+                directions[left_team]["direction_sign"] = 1
+                directions[left_team]["method"] = "centroid_rank"
+                directions[right_team]["direction_sign"] = -1
+                directions[right_team]["method"] = "centroid_rank"
+                unresolved.discard(left_team)
+                unresolved.discard(right_team)
+
+    for team in unresolved:
+        directions[team]["direction_sign"] = 1
+        directions[team]["method"] = "default"
+
+    return directions
+
+
+def _phase_from_norm_x(
+    owner_norm_x: float,
+    direction_sign: int,
+    boundaries: tuple[float, float],
+) -> str:
+    """Map ownership position to build-up/middle/final-third phase."""
+    lower, upper = boundaries
+    relative_x = float(owner_norm_x) if direction_sign >= 0 else (1.0 - float(owner_norm_x))
+    relative_x = max(0.0, min(1.0, relative_x))
+    if relative_x < lower:
+        return PHASE_BUILD_UP
+    if relative_x < upper:
+        return PHASE_MIDDLE_THIRD
+    return PHASE_FINAL_THIRD
+
+
+def _build_possession_by_minute(
+    possession_timeline: list[dict[str, Any]],
+    team_labels: list[str],
+    fps: float,
+    minute_bucket_seconds: float,
+) -> list[dict[str, Any]]:
+    """Aggregate known-possession ownership into per-minute windows."""
+    if minute_bucket_seconds <= 0:
+        minute_bucket_seconds = 60.0
+
+    rows_by_bucket: dict[int, dict[str, Any]] = {}
+    for row in possession_timeline:
+        timestamp = max(0.0, _safe_float(row.get("timestamp"), default=0.0))
+        bucket = int(timestamp // minute_bucket_seconds)
+        bucket_row = rows_by_bucket.setdefault(
+            bucket,
+            {
+                "frames_with_ball": 0,
+                "teams": Counter(),
+            },
+        )
+        bucket_row["frames_with_ball"] += 1
+        owner_team = str(row.get("owner_team", UNKNOWN_TEAM))
+        if owner_team != UNKNOWN_TEAM:
+            bucket_row["teams"][owner_team] += 1
+
+    possession_by_minute: list[dict[str, Any]] = []
+    for bucket in sorted(rows_by_bucket.keys()):
+        bucket_row = rows_by_bucket[bucket]
+        frames_with_ball = int(bucket_row["frames_with_ball"])
+        known_frames = int(sum(bucket_row["teams"].values()))
+        unknown_frames = max(0, frames_with_ball - known_frames)
+
+        teams_payload: dict[str, dict[str, Any]] = {}
+        for team in team_labels:
+            frames = int(bucket_row["teams"].get(team, 0))
+            teams_payload[team] = {
+                "frames": frames,
+                "seconds": frames / fps,
+                "share": (frames / known_frames) if known_frames > 0 else 0.0,
+            }
+
+        dominant_team = None
+        if known_frames > 0 and teams_payload:
+            dominant_team = max(
+                teams_payload.items(),
+                key=lambda item: item[1]["frames"],
+            )[0]
+
+        possession_by_minute.append(
+            {
+                "minute_index": bucket,
+                "start_time": bucket * minute_bucket_seconds,
+                "end_time": (bucket + 1) * minute_bucket_seconds,
+                "frames_with_ball": frames_with_ball,
+                "frames_with_possession": known_frames,
+                "unknown_frames": unknown_frames,
+                "teams": teams_payload,
+                "dominant_team": dominant_team,
+            }
+        )
+
+    return possession_by_minute
+
+
+def _build_possession_by_phase(
+    possession_timeline: list[dict[str, Any]],
+    possession_segments: list[dict[str, Any]],
+    possession_by_team: dict[str, dict[str, Any]],
+    team_labels: list[str],
+    frames_with_possession: int,
+    fps: float,
+    phase_boundaries: tuple[float, float],
+) -> dict[str, Any]:
+    """Aggregate possession into build-up/middle/final-third phase buckets."""
+    direction_by_team = _infer_team_phase_directions(
+        team_labels=team_labels,
+        possession_segments=possession_segments,
+        possession_timeline=possession_timeline,
+    )
+
+    phase_counter_by_team: dict[str, Counter[str]] = {
+        team: Counter() for team in team_labels
+    }
+
+    for row in possession_timeline:
+        owner_team = str(row.get("owner_team", UNKNOWN_TEAM))
+        if owner_team == UNKNOWN_TEAM or owner_team not in phase_counter_by_team:
+            continue
+        owner_norm_x = row.get("owner_norm_x")
+        if owner_norm_x is None:
+            continue
+
+        direction = direction_by_team.get(owner_team, {}).get("direction_sign", 1)
+        phase = _phase_from_norm_x(
+            owner_norm_x=float(owner_norm_x),
+            direction_sign=int(direction),
+            boundaries=phase_boundaries,
+        )
+        phase_counter_by_team[owner_team][phase] += 1
+
+    total_phase_counts = Counter()
+    unknown_phase_frames = 0
+    teams_payload: dict[str, dict[str, Any]] = {}
+    for team in team_labels:
+        team_total_frames = int(possession_by_team.get(team, {}).get("frames", 0))
+        phase_counts = phase_counter_by_team.get(team, Counter())
+        known_phase_frames = int(sum(phase_counts.values()))
+        team_unknown_frames = max(0, team_total_frames - known_phase_frames)
+        unknown_phase_frames += team_unknown_frames
+
+        phase_payload: dict[str, dict[str, Any]] = {}
+        for phase in POSSESSION_PHASES:
+            frames = int(phase_counts.get(phase, 0))
+            total_phase_counts[phase] += frames
+            phase_payload[phase] = {
+                "frames": frames,
+                "seconds": frames / fps,
+                "share_of_team_possession": (
+                    frames / team_total_frames
+                    if team_total_frames > 0
+                    else 0.0
+                ),
+            }
+
+        direction = direction_by_team.get(team, {})
+        teams_payload[team] = {
+            "direction_sign": int(direction.get("direction_sign", 1)),
+            "direction_method": direction.get("method", "default"),
+            "mean_owner_norm_x": direction.get("mean_owner_norm_x"),
+            "unknown_frames": team_unknown_frames,
+            "phases": phase_payload,
+        }
+
+    known_phase_total = int(sum(total_phase_counts.values()))
+    totals_payload = {
+        phase: {
+            "frames": int(total_phase_counts.get(phase, 0)),
+            "seconds": int(total_phase_counts.get(phase, 0)) / fps,
+            "share_of_known_phase_frames": (
+                int(total_phase_counts.get(phase, 0)) / known_phase_total
+                if known_phase_total > 0
+                else 0.0
+            ),
+            "share_of_known_possession": (
+                int(total_phase_counts.get(phase, 0)) / frames_with_possession
+                if frames_with_possession > 0
+                else 0.0
+            ),
+        }
+        for phase in POSSESSION_PHASES
+    }
+
+    return {
+        "phase_boundaries_norm_x": [phase_boundaries[0], phase_boundaries[1]],
+        "teams": teams_payload,
+        "totals": totals_payload,
+        "unknown_frames": unknown_phase_frames,
+    }
+
+
 def build_team_analytics(
     tracks: list[dict[str, Any]],
     assignments: list[dict[str, Any]] | None,
@@ -263,6 +544,13 @@ def build_team_analytics(
     possession_min_segment_frames = max(
         1,
         int(_cfg_value(config, "possession_min_segment_frames", 4)),
+    )
+    possession_minute_bucket_seconds = max(
+        1.0,
+        float(_cfg_value(config, "possession_minute_bucket_seconds", 60.0)),
+    )
+    possession_phase_boundaries = _normalize_phase_boundaries(
+        _cfg_value(config, "possession_phase_boundaries_norm_x", [0.33, 0.67])
     )
     pass_min_gap_seconds = float(_cfg_value(config, "pass_min_gap_seconds", 0.15))
     pass_max_gap_seconds = float(_cfg_value(config, "pass_max_gap_seconds", 2.5))
@@ -426,8 +714,9 @@ def build_team_analytics(
     frames_with_possession = int(sum(possession_counter.values()))
     unknown_possession_frames = max(0, frames_with_ball - frames_with_possession)
 
+    possession_team_labels = sorted(set(team_labels) | set(possession_counter.keys()))
     possession_by_team = {}
-    for team in team_labels:
+    for team in possession_team_labels:
         frames = int(possession_counter.get(team, 0))
         possession_by_team[team] = {
             "frames": frames,
@@ -500,6 +789,22 @@ def build_team_analytics(
             current_segment["frames"] = segment_frames
             current_segment["duration_seconds"] = segment_frames / fps
             possession_segments.append(current_segment)
+
+    possession_by_minute = _build_possession_by_minute(
+        possession_timeline=possession_timeline,
+        team_labels=possession_team_labels,
+        fps=fps,
+        minute_bucket_seconds=possession_minute_bucket_seconds,
+    )
+    possession_by_phase = _build_possession_by_phase(
+        possession_timeline=possession_timeline,
+        possession_segments=possession_segments,
+        possession_by_team=possession_by_team,
+        team_labels=possession_team_labels,
+        frames_with_possession=frames_with_possession,
+        fps=fps,
+        phase_boundaries=possession_phase_boundaries,
+    )
 
     carrier_frames: dict[tuple[str, int], int] = defaultdict(int)
     carrier_player_ids: dict[tuple[str, int], int | None] = {}
@@ -833,6 +1138,13 @@ def build_team_analytics(
         "frames_with_ball": frames_with_ball,
         "frames_with_possession": frames_with_possession,
         "teams_detected": team_labels,
+        "possession_minute_windows": len(possession_by_minute),
+        "possession_phase_samples": int(
+            sum(
+                int(possession_by_phase["totals"][phase]["frames"])
+                for phase in POSSESSION_PHASES
+            )
+        ),
         "passes_inferred": pass_network_summary["passes_inferred"],
         "pressing_evaluations": pressing_summary["evaluations"],
         "territory_samples": territory_summary["samples"],
@@ -846,6 +1158,9 @@ def build_team_analytics(
         "segments": len(possession_segments),
         "dominant_team": dominant_team,
         "top_carriers": top_carriers,
+        "minute_bucket_seconds": possession_minute_bucket_seconds,
+        "by_minute": possession_by_minute,
+        "by_phase": possession_by_phase,
     }
 
     return {
@@ -859,4 +1174,3 @@ def build_team_analytics(
         "pressing_timeline": pressing_timeline,
         "territory_rows": territory_rows,
     }
-
