@@ -4,7 +4,7 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 
 **Status**: ✅ Milestones 1-5 complete - Full pipeline with local web UI (M1 MacBook Air)
 
-**Latest**: Player identity persistence - ReID embeddings + SQLite database for cross-video player matching
+**Latest**: Pipeline resume after crash — reuse cached artifacts with one-click Resume button
 
 ## Features
 
@@ -13,8 +13,11 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 - **Player & Ball Detection** - YOLOv8-based detection with confidence scores
 - **Multi-Object Tracking** - ByteTrack for stable player/ball tracking across frames
 - **Team Identification** - Automatic team assignment via jersey color clustering
+- **Team Analytics (NEW)** - Possession, territory occupancy, inferred pass-network, and pressing metrics
+- **Cross-Match Reporting (NEW)** - Season trends and coach/player report templates across runs
 - **Event Detection** - Shot and goal detection with confidence scores and score timeline
-- **Local Web UI** - Interactive timeline, video player, and event review interface
+- **Automatic Highlight Generation (NEW)** - Select top segments from goals/shots + crowd audio spikes + action intensity
+- **Local Web UI** - Interactive timeline, video player, event review, and per-player reel browsing
 - **Video Analysis** - Process full 90-minute matches with configurable frame sampling
 - **Annotated Overlays** - Videos with team-colored boxes, track IDs, and movement trails
 - **Data Export** - Detections, tracks, team assignments, and events in Parquet, CSV, JSONL, and JSON
@@ -32,6 +35,105 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
   - API endpoints: list/get/update players, assign appearances, merge duplicates
   - Configurable via `reid` and `identity` sections in YAML
   - 55 new unit tests for ReID, database, and matching
+
+### 🆕 v0.5.11
+
+- **Highlight engine v1**: Generates ranked highlights from fused event/audio/action signals
+  - Emits `highlight_candidates.jsonl`, `highlights.json`, `highlights.csv`, and `highlights_manifest.json`
+  - Optional MP4 clip export to `runs/<run>/clips/`
+  - Generates per-player reels from fused player assignments + highlight segments
+  - Emits `player_highlights.json`, `player_highlights.csv`, and `player_highlights_manifest.json`
+  - Optional per-player clips to `runs/<run>/player_clips/`
+  - Configurable via new `highlights` section in YAML
+- **Player reels in UI**:
+  - New endpoints: `GET /api/runs/{run}/player_reels`, `GET /api/runs/{run}/player_reels/{player_id}`
+  - Segment clip endpoint: `GET /api/runs/{run}/player_reels/{player_id}/segments/{segment_id}/clip`
+  - Alias endpoint: `GET /api/runs/{run}/player_highlights`
+  - Export package endpoints: `POST /api/runs/{run}/player_reels/actions/export_package`, `GET /api/runs/{run}/player_reels/exports/{export_name}`
+  - Right-panel Player Reels browser with team/score/top-N filters and sorting
+  - Click-to-seek segment playback in main video plus optional direct clip playback when `clip_path` exists
+  - Export filtered reels as ZIP (JSON + CSV + manifest + optional clip files), optionally restricted to selected player IDs
+- **Identity Review in UI**:
+  - Endpoint: `GET /api/runs/{run}/identity_review`
+  - Suggestions endpoint: `GET /api/runs/{run}/identity_suggestions` (builds `profile_match_suggestions.json` from fused assignments)
+  - Apply suggestions endpoint: `POST /api/runs/{run}/identity_suggestions/actions/apply`
+  - Apply + preview endpoint: `POST /api/runs/{run}/identity_suggestions/actions/apply_and_preview`
+  - Apply + recompute endpoint: `POST /api/runs/{run}/identity_suggestions/actions/apply_and_recompute`
+  - Approve preview endpoint: `POST /api/runs/{run}/player_reels/actions/approve_preview`
+  - Edit history endpoint: `GET /api/runs/{run}/identity_review/edits`
+  - Create player endpoint: `POST /api/players`
+  - Single assign/unassign endpoint: `POST /api/runs/{run}/identity_review/actions/assign`
+  - Bulk assign endpoint: `POST /api/runs/{run}/identity_review/actions/bulk_assign`
+  - Undo last edit endpoint: `POST /api/runs/{run}/identity_review/actions/undo`
+  - Undo specific operation endpoint: `POST /api/runs/{run}/identity_review/actions/undo/{op_id}`
+  - Recompute endpoint: `POST /api/runs/{run}/player_reels/actions/recompute`
+  - Recompute preview endpoint: `POST /api/runs/{run}/player_reels/actions/recompute_preview`
+  - Edit player metadata, merge players, review profile/body fusion suggestions, inspect lock/unlock state and multimodal evidence (face/jersey), apply selected suggestions, one-click apply + preview diff / apply + recompute reels, explicitly approve stored previews to persist artifacts, toggle preserve-existing-clips behavior, reassign tracks (single or multi-select bulk), bulk unassign selected tracks, preview reel deltas, inspect assignment audit history, undo the last edit or a specific operation, then recompute reels from updated assignments
+- **Profile ingestion stage**: Ingest external player profile bundles for future dynamic tagging
+  - Reads profile folders with photos and optional `.pkl` embeddings
+  - Emits `profile_registry.json` and `profile_embeddings.parquet`
+  - Seeds player identities from profile photos in OSNet embedding space
+  - Fuses body-ReID + profile evidence (body_only / profile_only / profile_override / agreement_boost)
+  - Emits `profile_player_links.json` and enriched `player_assignments.json` fusion metadata
+  - Configurable via `identity.profile_ingestion`
+  - Includes ready local config: `configs/profile_ingestion.local.yaml`
+
+### 🆕 v0.5.12
+
+- **Run contract artifacts**:
+  - Pipeline now emits `summary.json` (aggregate run counts + score + artifact index + timing summary)
+  - Pipeline now emits `ui_index.json` (compact run index for UI discovery/loading)
+  - Both artifacts include explicit schema versions
+
+### 🆕 v0.5.13
+
+- **Dynamic tagging quality stage (multimodal)**:
+  - Adds Facenet512 profile face embeddings from profile photos (with histogram fallback if model backend is unavailable)
+  - Adds jersey-number OCR evidence (when OCR backend is available) and fuses it with body/profile matching
+  - Adds substitution-aware identity lock/unlock logic to reduce identity flips on overlapping/conflicting tracks
+  - Emits `identity_multimodal_summary.json` for per-run multimodal diagnostics
+  - Enriches `player_assignments.json` with lock fields and multimodal fusion metadata
+
+### 🆕 v0.5.14
+
+- **Field normalization stage (norm_xy)**:
+  - New pipeline stage computes zoom-aware normalized coordinates from dynamic player-spread viewports
+  - Adds `image_xy` and `norm_xy` fields to track rows for tactical analytics that are more stable under camera zoom
+  - Emits `field_normalization.json` and `field_viewports.parquet` artifacts with schema/config/summary
+
+### 🆕 v0.5.15
+
+- **Team analytics stage**:
+  - New pipeline stage computes team-level metrics from tracks + optional fused assignments
+  - Possession: nearest-player ball ownership timeline with smoothed team possession shares
+  - Territory: normalized occupancy/centroid/spread summaries and zone-control shares
+  - Pass network: inferred same-team carrier transitions with pass edges and counts
+  - Pressing: defender-to-carrier proximity pressure timeline and high-press episode metrics
+  - Emits `team_analytics.json`, `team_possession_timeline.csv`, `team_territory_zones.csv`, `team_pass_network.csv`, and `team_pressing_timeline.csv`
+
+### 🆕 v0.5.17
+
+- **Pipeline resume after crash**:
+  - New "Resume" button in UI for failed/cancelled jobs — reuses the same run directory so all cached stage artifacts are preserved
+  - `POST /api/pipeline/jobs/{job_id}/resume` endpoint with conflict checking
+  - OverlayStage now supports resume caching (skips re-render when `overlay.mp4` already exists)
+  - Atomic writes for Parquet and JSONL artifacts — prevents corrupted partial files on crash
+  - Fixed context reconstitution gaps in PlayerIdentityStage, PlayerHighlightReelsStage, and CrossMatchReportingStage cache paths
+
+### 🆕 v0.5.16
+
+- **Cross-match reporting/export stage**:
+  - Aggregates multiple runs in the same `runs/` root into season trend summaries
+  - Produces coach-ready report template with trend prompts and recent-window metrics
+  - Produces player report templates from per-player reel trends across matches
+  - Emits `cross_match_report.json`, `cross_match_match_trends.csv`, `cross_match_player_trends.csv`, `coach_report_template.md`, and `player_report_templates.md`
+- **Season Trends in UI**:
+  - New panel to browse season-level match aggregates, team trends, top players, and recent-window trajectories
+  - New endpoints:
+    - `GET /api/runs/{run}/cross_match`
+    - `GET /api/runs/{run}/cross_match/artifacts/{artifact_id}`
+    - `POST /api/runs/{run}/cross_match/actions/export_package`
+    - `GET /api/runs/{run}/cross_match/exports/{export_name}`
 
 ### v0.5.9
 
@@ -94,6 +196,7 @@ A local-first soccer video analysis system optimized for Apple Silicon that dete
 - Field keypoint detection for normalization
 - Jersey number OCR and player identification
 - See `docs/ENHANCEMENTS.md` for full roadmap
+- See `docs/FEATURE_ROADMAP.md` for expanded team/player analytics, dynamic tagging from profile photos, and highlight generation planning
 
 ## System Requirements
 
@@ -181,6 +284,17 @@ For better event detection (lower thresholds, longer interpolation):
 veo-analyze --video path/to/match.mp4 --output runs/my_analysis --config configs/improved_detection.yaml
 ```
 
+### Using Profile Ingestion Config (Your Team Pictures)
+
+The repo includes a local config preset at `configs/profile_ingestion.local.yaml`:
+
+```bash
+veo-analyze \
+  --video path/to/match.mp4 \
+  --output runs/my_analysis \
+  --config configs/profile_ingestion.local.yaml
+```
+
 ### Output Structure
 
 After running analysis, you'll find:
@@ -192,11 +306,38 @@ runs/my_analysis/
 ├── detections.parquet      # All detections with bbox, confidence, timestamps
 ├── tracks.parquet          # Stable tracks with IDs and team assignments
 ├── teams.json              # Team colors and assignments
+├── field_normalization.json # Field-view normalization config + summary
+├── field_viewports.parquet # Per-frame dynamic viewport bounds used for norm_xy
+├── team_analytics.json     # Team-level possession/territory/pass-network/pressing summary
+├── team_possession_timeline.csv # Frame-level ball ownership timeline
+├── team_territory_zones.csv # Team occupancy and zone-control ratios
+├── team_pass_network.csv   # Inferred pass edges between carriers
+├── team_pressing_timeline.csv # Per-frame pressing pressure observations
+├── cross_match_report.json # Season trends aggregated across run directories
+├── cross_match_match_trends.csv # Flat per-match trend export
+├── cross_match_player_trends.csv # Flat per-player season trend export
+├── coach_report_template.md # Coach report template with season metrics
+├── player_report_templates.md # Player report templates for top players
+├── profile_registry.json   # Ingested player profile metadata (if enabled)
+├── profile_embeddings.parquet # Normalized profile embeddings (if enabled)
+├── profile_player_links.json # Profile→player mapping from seeding/fusion (if enabled)
 ├── player_assignments.json # Track-to-player identity mapping (ReID)
 ├── events.jsonl            # Detected events (shots, goals) with confidence
 ├── events_confirmed.jsonl  # User confirmations/rejections/manual events (UI)
 ├── score_timeline.json     # Score progression with timestamps
-└── overlay.mp4            # Annotated video with team-colored boxes, IDs, and trails
+├── summary.json            # Aggregate run counts, score snapshot, and artifact index
+├── ui_index.json           # Compact run index for UI discovery/loading
+├── identity_multimodal_summary.json # Multimodal identity diagnostics (face/OCR/locking)
+├── highlight_candidates.jsonl # Candidate highlight triggers with reasons/scores
+├── highlights.json         # Selected highlight segments
+├── highlights.csv          # Flat CSV export of selected highlight segments
+├── highlights_manifest.json # Highlight config and summary
+├── player_highlights.json  # Per-player reel segments from fused assignments
+├── player_highlights.csv   # Flat CSV export of per-player reel segments
+├── player_highlights_manifest.json # Player reel config and summary
+├── clips/                  # Optional rendered highlight mp4 clips
+├── player_clips/           # Optional rendered per-player clip mp4s
+└── overlay.mp4             # Annotated video with team-colored boxes, IDs, and trails
 ```
 
 ### Working with Detection Data
@@ -244,7 +385,8 @@ import pandas as pd
 df = pd.read_parquet("runs/my_analysis/tracks.parquet")
 
 # Columns: track_id, frame_idx, timestamp, object_type, bbox,
-#          confidence, age, hits, time_since_update
+#          confidence, age, hits, time_since_update,
+#          image_x, image_y, image_xy, norm_x, norm_y, norm_xy, norm_source
 
 # Example queries
 unique_players = df[df.object_type == 'player']['track_id'].nunique()
@@ -287,7 +429,9 @@ The pipeline will:
 1. **Ingest** - Extract video metadata
 2. **Detect** - Find all players and ball in sampled frames
 3. **Track** - Associate detections into stable tracks with IDs
-4. **Overlay** - Render video with bounding boxes, track IDs, and trails
+4. **Team Assignment** - Cluster jersey colors into team labels
+5. **Field Normalization** - Compute zoom-aware `norm_xy` coordinates
+6. **Overlay** - Render video with bounding boxes, track IDs, and trails
 
 Then analyze the tracking results:
 
@@ -393,6 +537,55 @@ This generates:
 - `event_timeline.csv` - Timeline for visualization
 - Event statistics and confidence analysis
 
+### Working with Highlights
+
+The highlight stage creates ranked segments from:
+- event signals (goals/shots)
+- crowd audio spikes (RMS + robust z-score)
+- action intensity (ball speed burst + nearby player pressure)
+
+```python
+import json
+
+with open("runs/my_analysis/highlights.json", "r") as f:
+    highlights = json.load(f)
+
+print("Segments:", len(highlights["segments"]))
+for seg in highlights["segments"][:5]:
+    print(
+        f"{seg['segment_id']} "
+        f"{seg['start_time']:.1f}-{seg['end_time']:.1f}s "
+        f"score={seg['score']:.2f} reasons={seg['reasons']}"
+    )
+```
+
+If `highlights.export.save_clips=true`, rendered clips are saved to `runs/my_analysis/clips/`.
+
+### Working with Per-Player Reels
+
+Per-player reels are generated by combining:
+- selected highlight segments (`highlights.json`)
+- fused player assignments (`player_assignments.json`)
+- player presence/activity inside each segment
+
+```python
+import json
+
+with open("runs/my_analysis/player_highlights.json", "r") as f:
+    player_reels = json.load(f)
+
+for player in player_reels["players"][:3]:
+    print(player["player_id"], player.get("player_name"), player["segment_count"])
+    for seg in player["segments"][:2]:
+        print(
+            f"  {seg['segment_id']} "
+            f"{seg['start_time']:.1f}-{seg['end_time']:.1f}s "
+            f"player_score={seg['player_segment_score']:.2f}"
+        )
+```
+
+If `highlights.player_reels.save_clips=true`, per-player clips are exported to `runs/my_analysis/player_clips/`.
+
 ## Using the Web UI
 
 After running analysis, launch the local web interface to review events:
@@ -411,6 +604,15 @@ The UI will open at http://localhost:8000 with:
 - Browse all analysis runs
 - Interactive video player with overlay
 - Click events to jump to that moment
+- Browse per-player reels (from fused player assignments + highlight segments)
+- Click any player segment to seek/play that exact window in the main video
+- Filter reels by team, min score, top-N segments, and sort order
+- Play exported per-player clip files directly when available
+- Browse season trends across runs and download cross-match report artifacts/ZIP packages
+- Review identity assignments (player metadata + track mapping)
+- Create players for split corrections, merge duplicates, and reassign tracks
+- Multi-select track assignments and bulk-assign to a target player or bulk-unassign to `None`
+- Recompute `player_highlights.json` directly from updated identity assignments
 - Visual timeline with shot/goal markers
 - Score display and event confidence
 - Frame-accurate seeking
@@ -425,6 +627,7 @@ The UI will open at http://localhost:8000 with:
 5. Review confidence scores and event details
 6. Click ✓ to confirm or ✗ to reject auto-detected events
 7. Click "+ Add Event" to manually add shots or goals at current timestamp
+8. Use "Player Reels" to jump directly to player-specific highlight segments
 
 **Event Confirmation:**
 - Pending events show approve/reject buttons
@@ -437,6 +640,7 @@ The UI automatically loads:
 - Video overlay (`overlay.mp4`)
 - Detected events (`events.jsonl`)
 - Score timeline (`score_timeline.json`)
+- Per-player reels (`player_highlights.json`)
 - Run metadata
 
 ## Configuration
@@ -480,6 +684,113 @@ detection:
 Or use the pre-configured ball specialist config:
 ```bash
 veo-analyze --video match.mp4 --output runs/test --config configs/ball_specialist.yaml
+```
+
+### Field Normalization Settings
+
+```yaml
+field:
+  enabled: true
+  min_players_per_frame: 6
+  player_percentile_low: 0.10
+  player_percentile_high: 0.90
+  margin_ratio: 0.12
+  smoothing_alpha: 0.25
+  min_viewport_width_ratio: 0.35
+  min_viewport_height_ratio: 0.35
+  clip_norm: true
+```
+
+### Team Analytics Settings
+
+```yaml
+team_analytics:
+  enabled: true
+  use_norm_coordinates: true
+  possession_max_ball_distance_px: 140.0
+  possession_smoothing_frames: 3
+  possession_min_stable_frames: 3
+  possession_min_segment_frames: 4
+  pass_min_gap_seconds: 0.15
+  pass_max_gap_seconds: 2.5
+  territory_x_bins: 3
+  territory_y_bins: 3
+  pressure_radius_norm: 0.10
+  high_press_threshold: 0.65
+  high_press_min_frames: 8
+```
+
+### Cross-Match Reporting Settings
+
+```yaml
+cross_match:
+  enabled: true
+  runs_root: null               # defaults to parent of current run directory
+  include_current_run: true
+  max_runs: 60
+  last_n_window: 5
+  top_players: 15
+  min_player_segment_score: 0.25
+```
+
+### Profile Ingestion Settings
+
+```yaml
+identity:
+  profile_ingestion:
+    enabled: true
+    profiles_root: "/Users/yehj10/iCloud/vs/download_icloud_images/team_pictures"
+    recursive_image_scan: false
+    enable_body_embedding_seed: true
+    max_images_per_profile_for_reid: 5
+    profile_match_enabled: true
+    profile_match_auto_threshold: 0.82
+    profile_match_suggest_threshold: 0.68
+  multimodal:
+    enabled: true
+    face:
+      enabled: true
+      min_track_support_frames: 2
+      suggest_threshold: 0.68
+    jersey_ocr:
+      enabled: true
+      min_ocr_confidence: 0.45
+      min_track_support_frames: 2
+    locking:
+      enabled: true
+      lock_confidence_threshold: 0.82
+      overlap_conflict_frames: 45
+      substitution_gap_frames: 150
+```
+
+### Highlight Settings
+
+```yaml
+highlights:
+  enabled: true
+  event:
+    include_goals: true
+    include_shots: true
+  audio:
+    enabled: true
+    min_z_score: 2.0
+  action:
+    enabled: true
+    score_quantile: 0.9
+  segment:
+    pre_roll_seconds: 8.0
+    post_roll_seconds: 12.0
+    top_n: 20
+  export:
+    save_clips: false
+  player_reels:
+    enabled: true
+    max_segments_per_player: 8
+    min_presence_seconds: 1.5
+    min_player_segment_score: 0.2
+    min_assignment_confidence: 0.6
+    include_suggested_assignments: true
+    save_clips: false
 ```
 
 ### Overlay Settings
@@ -763,8 +1074,8 @@ ai_video_analysis/
 
 ### Milestone 6: "It's Production Ready"
 - [ ] Export functionality from UI
-- [ ] Caching and resumable pipeline
-- [ ] Error recovery and validation
+- [x] Caching and resumable pipeline
+- [x] Error recovery and validation
 - [x] Performance profiling and optimization
 - [x] Golden regression test suite
 - [ ] Comprehensive documentation

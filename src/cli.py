@@ -1018,6 +1018,12 @@ class PlayerIdentityStage(PipelineStage):
                 with open(assignments_path) as f:
                     assignments_data = json.load(f)
                 context["player_assignments"] = assignments_data
+                # Load multimodal summary if available
+                multimodal_summary_path = output_dir / "identity_multimodal_summary.json"
+                if multimodal_summary_path.exists():
+                    with open(multimodal_summary_path) as f2:
+                        context["identity_multimodal_summary"] = json.load(f2)
+                    context["identity_multimodal_summary_path"] = str(multimodal_summary_path)
                 context["player_identity_items_processed"] = len(assignments_data.get("assignments", []))
                 context["player_identity_custom_metrics"] = {"cached": True}
                 return context
@@ -2831,10 +2837,13 @@ class PlayerHighlightReelsStage(PipelineStage):
             context["player_highlights"] = reels_data
             count = reels_data.get("summary", {}).get("player_segments_total", 0)
             context["player_highlight_reels_items_processed"] = count
+            reel_summary = reels_data.get("summary", {})
             context["player_highlight_reels_custom_metrics"] = {
                 "cached": True,
-                "players_with_reels": reels_data.get("summary", {}).get("players_with_reels", 0),
+                "players_with_reels": reel_summary.get("players_with_reels", 0),
                 "player_segments_total": count,
+                "clips_exported": reel_summary.get("clips_exported", 0),
+                "clip_failures": reel_summary.get("clip_failures", 0),
             }
             return context
 
@@ -3065,6 +3074,7 @@ class CrossMatchReportingStage(PipelineStage):
                 "cached": True,
                 "matches_analyzed": int(summary.get("matches_analyzed", 0)),
                 "unique_players": int(summary.get("unique_players", 0)),
+                "top_players_exported": len(report_artifact.get("players", {}).get("top_players", [])),
             }
             return context
 
@@ -3188,6 +3198,15 @@ class OverlayStage(PipelineStage):
 
         video_path = Path(context["video_path"])
         output_dir = Path(context["output_dir"])
+
+        # Resume: reuse cached overlay if it exists and is non-empty
+        overlay_path = output_dir / "overlay.mp4"
+        if context.get("resume", False) and overlay_path.exists() and overlay_path.stat().st_size > 0:
+            self.console.print(f"[bold yellow]✓ Using cached overlay video from {overlay_path.name}[/bold yellow]")
+            context["overlay_path"] = str(overlay_path)
+            context["overlay_items_processed"] = 0
+            context["overlay_custom_metrics"] = {"cached": True, "output_path": str(overlay_path)}
+            return context
 
         # Use tracks if available, otherwise fall back to detections
         tracks = context.get("tracks", [])

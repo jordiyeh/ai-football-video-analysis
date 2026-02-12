@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator
 
 import pandas as pd
 from rich.console import Console
@@ -591,6 +594,25 @@ class Pipeline:
             self.console.print(f"  {stage_name:15} {bar} {duration_str} ({pct:.1f}%)")
 
 
+@contextmanager
+def atomic_write(target_path: Path) -> Generator[Path, None, None]:
+    """Write to a temp file in the same directory, then atomically rename.
+
+    Prevents corrupted partial files if the process crashes mid-write.
+    """
+    parent = target_path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path_str = tempfile.mkstemp(dir=parent, suffix=".tmp")
+    os.close(fd)
+    tmp_path = Path(tmp_path_str)
+    try:
+        yield tmp_path
+        os.replace(tmp_path, target_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def save_detections_to_parquet(
     detections: list[dict[str, Any]],
     output_path: Path,
@@ -620,7 +642,8 @@ def save_detections_to_parquet(
     else:
         # Keep schema_version column even for empty exports.
         df = pd.DataFrame(columns=["schema_version"])
-    df.to_parquet(output_path, index=False)
+    with atomic_write(output_path) as tmp:
+        df.to_parquet(tmp, index=False)
 
 
 def save_detections_to_jsonl(
@@ -635,9 +658,10 @@ def save_detections_to_jsonl(
         detections: List of detection dictionaries
         output_path: Output file path
     """
-    with open(output_path, "w") as f:
-        for detection in detections:
-            row = dict(detection)
-            if schema_version is not None:
-                row["schema_version"] = schema_version
-            f.write(json.dumps(row) + "\n")
+    with atomic_write(output_path) as tmp:
+        with open(tmp, "w") as f:
+            for detection in detections:
+                row = dict(detection)
+                if schema_version is not None:
+                    row["schema_version"] = schema_version
+                f.write(json.dumps(row) + "\n")
