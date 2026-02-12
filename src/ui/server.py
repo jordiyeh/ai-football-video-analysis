@@ -181,6 +181,27 @@ class UpdateTagBody(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class LineupBody(BaseModel):
+    """Request body for saving a match lineup."""
+    formation: str = ""  # e.g. "4-3-3"
+    players: list[dict] = []  # [{player_id, position, jersey_number, name}]
+    notes: str = ""
+
+
+class CoachNoteBody(BaseModel):
+    """Request body for saving a coach note."""
+    text: str
+    category: str = "general"
+
+
+class SpotlightConfigBody(BaseModel):
+    """Request body for player spotlight sensitivity."""
+    ball_distance_threshold: float = 140.0
+    time_on_ball_seconds: float = 1.5
+    pre_buffer_seconds: float = 3.0
+    post_buffer_seconds: float = 3.0
+
+
 def _utc_now_iso() -> str:
     """Return timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
@@ -3325,6 +3346,54 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             "job": queued,
         }
 
+    @app.post("/api/pipeline/jobs/{job_id}/resume")
+    async def resume_pipeline_job(job_id: str):
+        """Resume a failed/cancelled job, reusing its run directory and cached artifacts."""
+        with pipeline_jobs_lock:
+            source = pipeline_jobs.get(job_id)
+            if source is None:
+                raise HTTPException(status_code=404, detail="Pipeline job not found")
+            source_status = str(source.get("status") or "")
+            if source_status not in {"failed", "cancelled"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Only failed or cancelled jobs can be resumed.",
+                )
+
+            source_video_path = str(source.get("video_path") or "")
+            source_run_name = str(source.get("run_name") or "")
+            source_config = source.get("config_path")
+            source_no_overlay = bool(source.get("no_overlay", False))
+
+            # Conflict check: no queued/running job with the same run_name
+            for other in pipeline_jobs.values():
+                if (
+                    other.get("status") in {"queued", "running"}
+                    and str(other.get("run_name") or "") == source_run_name
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Another job is already queued/running with run_name '{source_run_name}'.",
+                    )
+
+        video_path = Path(source_video_path)
+        if not video_path.exists() or not video_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Source video not found: {source_video_path}")
+
+        queued = queue_one_pipeline_job(
+            video_path=video_path,
+            run_name=source_run_name,
+            config_path=str(source_config) if isinstance(source_config, str) else None,
+            resume=True,
+            no_overlay=source_no_overlay,
+            source_job_id=job_id,
+        )
+        return {
+            "success": True,
+            "source_job_id": job_id,
+            "job": queued,
+        }
+
     @app.post("/api/pipeline/jobs/{job_id}/duplicate")
     async def duplicate_pipeline_job(job_id: str):
         """Duplicate a job with same inputs/settings and queue it."""
@@ -4074,6 +4143,100 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         )
         return artifact.to_dict()
 
+    @app.get("/api/runs/{run_name}/visualizations/shot_map")
+    async def get_run_shot_map(
+        run_name: str,
+        team_id: str | None = None,
+        player_id: int | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        min_confidence: float = 0.0,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Render a shot-map artifact from run tracks/events."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.shot_map import ShotMapRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        events = _load_visualization_events(run_path)
+        context = _build_visualization_context(
+            run_path,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_padding=canvas_padding,
+        )
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            start_t=start_t,
+            end_t=end_t,
+            extra={
+                "min_confidence": float(min_confidence),
+            },
+        )
+
+        artifact = ShotMapRenderer(include_markings=include_markings).render(
+            tracks=tracks,
+            events=events,
+            query=query,
+            context=context,
+        )
+        return artifact.to_dict()
+
+    @app.get("/api/runs/{run_name}/visualizations/heat_map")
+    async def get_run_heat_map(
+        run_name: str,
+        team_id: str | None = None,
+        player_id: int | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        min_confidence: float = 0.0,
+        include_points: bool = False,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Render a heat-map artifact from run tracks."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.heat_map import HeatMapRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        context = _build_visualization_context(
+            run_path,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_padding=canvas_padding,
+        )
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            start_t=start_t,
+            end_t=end_t,
+            extra={
+                "min_confidence": float(min_confidence),
+                "include_points": bool(include_points),
+            },
+        )
+
+        artifact = HeatMapRenderer(include_markings=include_markings).render(
+            tracks=tracks,
+            query=query,
+            context=context,
+        )
+        return artifact.to_dict()
+
     @app.get("/api/runs/{run_name}/visualizations/tactical_map")
     async def get_run_tactical_map(
         run_name: str,
@@ -4135,6 +4298,390 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             query=query,
             context=context,
         )
+        return artifact.to_dict()
+
+    @app.get("/api/runs/{run_name}/visualizations/momentum")
+    async def get_run_momentum(
+        run_name: str,
+        team_id: str | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        window_seconds: float = 60.0,
+        canvas_width: int = 900,
+        canvas_height: int = 400,
+    ):
+        """Render a momentum graph from run tracks and team analytics."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.momentum_graph import MomentumGraphRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        context: dict[str, Any] = {}
+
+        video_metadata_path = run_path / "video_metadata.json"
+        if video_metadata_path.exists():
+            with open(video_metadata_path) as f:
+                metadata = json.load(f)
+            if isinstance(metadata, dict):
+                if metadata.get("fps"):
+                    context["fps"] = metadata["fps"]
+
+        team_colors = _resolve_visualization_team_colors(run_path)
+        if team_colors:
+            context["team_colors"] = team_colors
+
+        team_analytics_path = run_path / "team_analytics.json"
+        if team_analytics_path.exists():
+            with open(team_analytics_path) as f:
+                team_analytics = json.load(f)
+            if isinstance(team_analytics, dict):
+                context["team_analytics"] = team_analytics
+
+        query = VisualizationQuery(
+            team_id=team_id,
+            start_t=start_t,
+            end_t=end_t,
+        )
+
+        artifact = MomentumGraphRenderer(
+            window_seconds=window_seconds,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        ).render(tracks=tracks, query=query, context=context)
+        return artifact.to_dict()
+
+    @app.get("/api/runs/{run_name}/visualizations/pass_strings")
+    async def get_run_pass_strings(
+        run_name: str,
+        team_id: str | None = None,
+        player_id: int | None = None,
+        start_t: float | None = None,
+        end_t: float | None = None,
+        min_confidence: float = 0.0,
+        min_chain_length: int = 3,
+        max_gap_seconds: float = 5.0,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Render pass strings (sequential chains) from run events."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.pass_strings import PassStringsRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        events = _load_visualization_events(run_path)
+        context = _build_visualization_context(
+            run_path,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            canvas_padding=canvas_padding,
+        )
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            start_t=start_t,
+            end_t=end_t,
+            extra={
+                "min_confidence": float(min_confidence),
+                "min_chain_length": int(min_chain_length),
+                "max_gap_seconds": float(max_gap_seconds),
+            },
+        )
+
+        artifact = PassStringsRenderer(include_markings=include_markings).render(
+            tracks=tracks,
+            events=events,
+            query=query,
+            context=context,
+        )
+        return artifact.to_dict()
+
+    @app.get("/api/runs/{run_name}/visualizations/radial_chart")
+    async def get_run_radial_chart(
+        run_name: str,
+        team_id: str | None = None,
+        canvas_width: int = 800,
+        canvas_height: int = 800,
+    ):
+        """Render a radial (radar/spider) chart comparing teams."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.radial_chart import RadialChartRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        context: dict[str, Any] = {}
+
+        team_colors = _resolve_visualization_team_colors(run_path)
+        if team_colors:
+            context["team_colors"] = team_colors
+
+        team_analytics_path = run_path / "team_analytics.json"
+        if team_analytics_path.exists():
+            with open(team_analytics_path) as f:
+                team_analytics = json.load(f)
+            if isinstance(team_analytics, dict):
+                context["team_analytics"] = team_analytics
+
+        summary_path = run_path / "summary.json"
+        if summary_path.exists():
+            with open(summary_path) as f:
+                summary = json.load(f)
+            if isinstance(summary, dict):
+                match_stats = summary.get("match_stats")
+                if isinstance(match_stats, dict):
+                    context["match_stats"] = match_stats
+
+        query = VisualizationQuery(team_id=team_id)
+
+        artifact = RadialChartRenderer(
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        ).render(tracks=tracks, query=query, context=context)
+        return artifact.to_dict()
+
+    # -- Formation / Lineup Authoring ----------------------------------------
+
+    @app.get("/api/runs/{run_name}/lineup")
+    async def get_run_lineup(run_name: str):
+        """Get saved lineup for a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        lineup_path = run_path / "lineup.json"
+        if not lineup_path.exists():
+            return {"formation": "", "players": [], "notes": ""}
+        with open(lineup_path) as f:
+            return json.load(f)
+
+    @app.put("/api/runs/{run_name}/lineup")
+    async def save_run_lineup(run_name: str, body: LineupBody):
+        """Save lineup and formation for a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        lineup_path = run_path / "lineup.json"
+        payload = {"formation": body.formation, "players": body.players, "notes": body.notes}
+        with open(lineup_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        return payload
+
+    # -- Coach Notes / Journal -----------------------------------------------
+
+    @app.get("/api/runs/{run_name}/notes")
+    async def list_run_notes(run_name: str):
+        """List coach notes for a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        notes_path = run_path / "coach_notes.json"
+        if not notes_path.exists():
+            return {"notes": [], "count": 0}
+        with open(notes_path) as f:
+            data = json.load(f)
+        notes = data if isinstance(data, list) else data.get("notes", [])
+        return {"notes": notes, "count": len(notes)}
+
+    @app.post("/api/runs/{run_name}/notes")
+    async def add_run_note(run_name: str, body: CoachNoteBody):
+        """Add a coach note to a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        notes_path = run_path / "coach_notes.json"
+        notes = []
+        if notes_path.exists():
+            with open(notes_path) as f:
+                data = json.load(f)
+            notes = data if isinstance(data, list) else data.get("notes", [])
+        note = {
+            "id": str(uuid4()),
+            "text": body.text,
+            "category": body.category,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        notes.append(note)
+        with open(notes_path, "w") as f:
+            json.dump({"notes": notes}, f, indent=2)
+        return note
+
+    @app.delete("/api/runs/{run_name}/notes/{note_id}")
+    async def delete_run_note(run_name: str, note_id: str):
+        """Delete a coach note."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        notes_path = run_path / "coach_notes.json"
+        if not notes_path.exists():
+            raise HTTPException(status_code=404, detail="Note not found")
+        with open(notes_path) as f:
+            data = json.load(f)
+        notes = data if isinstance(data, list) else data.get("notes", [])
+        filtered = [n for n in notes if n.get("id") != note_id]
+        if len(filtered) == len(notes):
+            raise HTTPException(status_code=404, detail="Note not found")
+        with open(notes_path, "w") as f:
+            json.dump({"notes": filtered}, f, indent=2)
+        return {"deleted": note_id}
+
+    # -- Player Spotlight Sensitivity Controls --------------------------------
+
+    @app.get("/api/runs/{run_name}/spotlight_config")
+    async def get_spotlight_config(run_name: str):
+        """Get player spotlight sensitivity config for a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        config_path = run_path / "spotlight_config.json"
+        if not config_path.exists():
+            return SpotlightConfigBody().model_dump()
+        with open(config_path) as f:
+            return json.load(f)
+
+    @app.put("/api/runs/{run_name}/spotlight_config")
+    async def save_spotlight_config(run_name: str, body: SpotlightConfigBody):
+        """Save player spotlight sensitivity config for a run."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        config_path = run_path / "spotlight_config.json"
+        payload = body.model_dump()
+        with open(config_path, "w") as f:
+            json.dump(payload, f, indent=2)
+        return payload
+
+    # -- Player Share Links ---------------------------------------------------
+
+    @app.get("/api/runs/{run_name}/share/{player_id}")
+    async def get_player_share_link(run_name: str, player_id: int):
+        """Generate a shareable link for player highlights."""
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+        # Generate a deterministic share token from run_name + player_id
+        share_token = hashlib.sha256(f"{run_name}:{player_id}".encode()).hexdigest()[:16]
+        return {
+            "run_name": run_name,
+            "player_id": player_id,
+            "share_token": share_token,
+            "share_url": f"/share/{share_token}",
+        }
+
+    # -- Progress Chart -------------------------------------------------------
+
+    @app.get("/api/runs/{run_name}/visualizations/progress_chart")
+    async def get_run_progress_chart(
+        run_name: str,
+        player_id: int | None = None,
+        canvas_width: int = 1000,
+        canvas_height: int = 500,
+    ):
+        """Render a player progress chart across matches."""
+        from src.export.visualizations import VisualizationQuery
+        from src.export.visualizations.progress_chart import ProgressChartRenderer
+
+        run_path = runs_dir / run_name
+        if not run_path.exists():
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        tracks = _load_visualization_tracks(run_path)
+        context: dict[str, Any] = {}
+
+        # Try to load cross-match player data
+        cross_match_path = run_path / "cross_match_report.json"
+        if cross_match_path.exists():
+            with open(cross_match_path) as f:
+                cross_match = json.load(f)
+            if isinstance(cross_match, dict):
+                context["player_progress"] = cross_match.get("player_progress", [])
+
+        query = VisualizationQuery(player_id=player_id)
+
+        artifact = ProgressChartRenderer(
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+        ).render(tracks=tracks, query=query, context=context)
+        return artifact.to_dict()
+
+    @app.get("/api/multi-run/visualizations/{viz_type}")
+    async def get_multi_run_visualization(
+        viz_type: str,
+        run_names: str = "",
+        team_id: str | None = None,
+        player_id: int | None = None,
+        min_confidence: float = 0.0,
+        canvas_width: int = 1200,
+        canvas_height: int = 780,
+        canvas_padding: int | None = None,
+        include_markings: bool = True,
+    ):
+        """Aggregate visualization data across multiple runs (season-level maps)."""
+        from src.export.visualizations import VisualizationQuery
+
+        if not run_names:
+            raise HTTPException(status_code=400, detail="run_names parameter required")
+
+        names = [n.strip() for n in run_names.split(",") if n.strip()]
+        if not names:
+            raise HTTPException(status_code=400, detail="No valid run names")
+
+        all_tracks: list[dict[str, Any]] = []
+        all_events: list[dict[str, Any]] = []
+        last_context: dict[str, Any] = {}
+
+        for name in names:
+            rp = runs_dir / name
+            if not rp.exists():
+                continue
+            try:
+                all_tracks.extend(_load_visualization_tracks(rp))
+            except Exception:
+                pass
+            try:
+                all_events.extend(_load_visualization_events(rp))
+            except Exception:
+                pass
+            last_context = _build_visualization_context(
+                rp,
+                canvas_width=canvas_width,
+                canvas_height=canvas_height,
+                canvas_padding=canvas_padding,
+            )
+
+        if not all_tracks:
+            raise HTTPException(status_code=404, detail="No tracks found across runs")
+
+        query = VisualizationQuery(
+            team_id=team_id,
+            player_id=player_id,
+            extra={"min_confidence": float(min_confidence)},
+        )
+
+        if viz_type == "shot_map":
+            from src.export.visualizations.shot_map import ShotMapRenderer
+            renderer = ShotMapRenderer(include_markings=include_markings)
+            artifact = renderer.render(tracks=all_tracks, events=all_events, query=query, context=last_context)
+        elif viz_type == "heat_map":
+            from src.export.visualizations.heat_map import HeatMapRenderer
+            renderer = HeatMapRenderer(include_markings=include_markings)
+            artifact = renderer.render(tracks=all_tracks, query=query, context=last_context)
+        elif viz_type == "pass_map":
+            from src.export.visualizations.pass_map import PassMapRenderer
+            renderer = PassMapRenderer(include_markings=include_markings)
+            artifact = renderer.render(tracks=all_tracks, events=all_events, query=query, context=last_context)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported viz type: {viz_type}")
+
         return artifact.to_dict()
 
     @app.get("/api/runs/{run_name}/events")

@@ -125,6 +125,10 @@ const seasonSummaryGrid = document.getElementById('seasonSummaryGrid');
 const seasonTeamTrends = document.getElementById('seasonTeamTrends');
 const seasonTopPlayers = document.getElementById('seasonTopPlayers');
 const seasonRecentWindow = document.getElementById('seasonRecentWindow');
+const playerReelsMount = document.getElementById('playerReelsMount');
+const seasonTrendsMount = document.getElementById('seasonTrendsMount');
+const playerReelsRunContext = document.getElementById('playerReelsRunContext');
+const seasonRunContext = document.getElementById('seasonRunContext');
 const visualizationTypeSelect = document.getElementById('visualizationType');
 const visualizationTeamFilter = document.getElementById('visualizationTeamFilter');
 const visualizationPlayerFilter = document.getElementById('visualizationPlayerFilter');
@@ -342,6 +346,32 @@ function restoreCollapsibleStates() {
             }
         } catch(e) {}
     });
+}
+
+function scrollPanelSection(sectionId) {
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function relocateCrossMatchSections() {
+    const reelsSection = document.querySelector('.player-reels-section');
+    const seasonSection = document.querySelector('.season-section');
+
+    if (reelsSection && playerReelsMount && reelsSection.parentElement !== playerReelsMount) {
+        playerReelsMount.appendChild(reelsSection);
+    }
+    if (seasonSection && seasonTrendsMount && seasonSection.parentElement !== seasonTrendsMount) {
+        seasonTrendsMount.appendChild(seasonSection);
+    }
+}
+
+function updateCrossViewContexts() {
+    const runLabel = currentRun
+        ? `Current run: ${currentRun}`
+        : 'Select a run in Match Analysis first.';
+    if (playerReelsRunContext) playerReelsRunContext.textContent = runLabel;
+    if (seasonRunContext) seasonRunContext.textContent = runLabel;
 }
 
 // --- Fullscreen ---
@@ -645,9 +675,11 @@ document.addEventListener('DOMContentLoaded', () => {
         themeBtn.textContent = isDark ? 'Light Mode' : 'Dark Mode';
     }
 
+    relocateCrossMatchSections();
     restoreCollapsibleStates();
     applyViewerLayout(loadViewerLayoutPreference());
     updateSpeedrunControls();
+    updateCrossViewContexts();
     updatePlayerReelFilters();
     _syncTagFilterInputs();
     if (tagCategoryInput && !String(tagCategoryInput.value || '').trim()) {
@@ -759,6 +791,9 @@ function renderPipelineJobs() {
         const cancelAction = (status === 'queued' || status === 'running')
             ? `<button class="identity-btn" ${cancelledPending ? 'disabled' : ''} onclick="cancelPipelineJob('${jobId}')">${cancelledPending ? 'Cancel Requested' : 'Cancel'}</button>`
             : '';
+        const resumeAction = (status === 'failed' || status === 'cancelled')
+            ? `<button class="identity-btn" onclick="resumePipelineJob('${jobId}')">Resume</button>`
+            : '';
         const retryAction = (status === 'failed' || status === 'cancelled')
             ? `<button class="identity-btn" onclick="retryPipelineJob('${jobId}')">Retry</button>`
             : '';
@@ -788,6 +823,7 @@ function renderPipelineJobs() {
                 <div class="pipeline-progress"><div class="pipeline-progress-fill" style="width:${progress}%;"></div></div>
                 <div class="pipeline-job-actions">
                     ${cancelAction}
+                    ${resumeAction}
                     ${retryAction}
                     ${duplicateAction}
                     ${openRunAction}
@@ -880,6 +916,10 @@ async function cancelPipelineJob(jobId) {
 
 async function retryPipelineJob(jobId) {
     await postPipelineJobAction(jobId, 'retry', 'Retry job queued.');
+}
+
+async function resumePipelineJob(jobId) {
+    await postPipelineJobAction(jobId, 'resume', 'Resume job queued.');
 }
 
 async function duplicatePipelineJob(jobId) {
@@ -1116,6 +1156,7 @@ async function deleteRun(encodedRunName) {
         showToast(`Run "${runName}" deleted.`);
         if (currentRun === runName) {
             currentRun = null;
+            updateCrossViewContexts();
         }
         await loadRuns();
         await loadPipelineJobs(true);
@@ -1130,6 +1171,7 @@ async function loadRun(runName, sourceElement = null) {
     const thisGeneration = ++loadRunGeneration;
 
     currentRun = runName;
+    updateCrossViewContexts();
 
     // Reset state
     tags = [];
@@ -1228,6 +1270,12 @@ async function loadRun(runName, sourceElement = null) {
 
         // Load run-team mapping bar
         await loadRunTeamMapping(runName);
+        if (thisGeneration !== loadRunGeneration) return;
+
+        // Load lineup, notes, spotlight config
+        loadLineup(runName);
+        loadCoachNotes(runName);
+        loadSpotlightConfig(runName);
         if (thisGeneration !== loadRunGeneration) return;
 
         // Load per-player highlight reels
@@ -3889,6 +3937,23 @@ function renderVisualizationPanel() {
         summaryItems.push(`Passes: ${Number(totals.passes || 0)}`);
         summaryItems.push(`Edges: ${Number(totals.edges || 0)}`);
         summaryItems.push(`Nodes: ${Number(totals.nodes || 0)}`);
+    } else if (type === 'shot_map') {
+        summaryItems.push(`Shots: ${Number(totals.shots || 0)}`);
+        summaryItems.push(`Goals: ${Number(totals.goals || 0)}`);
+        summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
+    } else if (type === 'heat_map') {
+        summaryItems.push(`Samples: ${Number(totals.samples || 0)}`);
+        summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
+        summaryItems.push(`Tracks: ${Number(totals.tracks || 0)}`);
+    } else if (type === 'momentum') {
+        summaryItems.push(`Windows: ${Number(totals.windows || 0)}`);
+        summaryItems.push(`Duration: ${Number(totals.duration_seconds || 0).toFixed(0)}s`);
+    } else if (type === 'pass_strings') {
+        summaryItems.push(`Chains: ${Number(totals.chains || 0)}`);
+        summaryItems.push(`Max length: ${Number(totals.max_chain_length || 0)}`);
+    } else if (type === 'radial_chart') {
+        summaryItems.push(`Metrics: ${Number(totals.metrics || 0)}`);
+        summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
     } else {
         summaryItems.push(`Samples: ${Number(totals.samples || 0)}`);
         summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
@@ -3920,7 +3985,9 @@ async function loadVisualization(runName) {
         ...filters
     };
 
-    const endpointType = filters.type === 'tactical_map' ? 'tactical_map' : 'pass_map';
+    const KNOWN_VIZ_TYPES = ['pass_map', 'shot_map', 'heat_map', 'tactical_map',
+        'momentum', 'pass_strings', 'radial_chart'];
+    const endpointType = KNOWN_VIZ_TYPES.includes(filters.type) ? filters.type : 'pass_map';
     const params = new URLSearchParams();
     if (filters.teamId) params.set('team_id', filters.teamId);
     if (filters.playerId != null) params.set('player_id', String(Math.round(filters.playerId)));
@@ -3928,7 +3995,7 @@ async function loadVisualization(runName) {
     params.set('canvas_width', '900');
     params.set('canvas_height', '560');
 
-    if (endpointType === 'tactical_map') {
+    if (endpointType === 'tactical_map' || endpointType === 'heat_map') {
         params.set('include_points', filters.includePoints ? 'true' : 'false');
     }
 
@@ -3962,6 +4029,115 @@ async function loadVisualization(runName) {
 function onVisualizationControlsChanged() {
     if (!currentRun) return;
     loadVisualization(currentRun);
+}
+
+// --- Formation / Lineup ---
+async function loadLineup(runName) {
+    if (!runName) return;
+    try {
+        const resp = await fetch(`/api/runs/${runName}/lineup`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const formEl = document.getElementById('lineupFormation');
+        const notesEl = document.getElementById('lineupNotes');
+        if (formEl) formEl.value = data.formation || '';
+        if (notesEl) notesEl.value = data.notes || '';
+        const content = document.getElementById('lineupContent');
+        if (content) {
+            const count = Array.isArray(data.players) ? data.players.length : 0;
+            content.innerHTML = `<p style="font-size:0.8rem;color:#aaa;">${count} player(s) in lineup</p>`;
+        }
+    } catch (e) { console.error('Error loading lineup:', e); }
+}
+
+async function saveLineup() {
+    if (!currentRun) return;
+    const formation = document.getElementById('lineupFormation')?.value || '';
+    const notes = document.getElementById('lineupNotes')?.value || '';
+    try {
+        await fetch(`/api/runs/${currentRun}/lineup`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({formation, players: [], notes}),
+        });
+    } catch (e) { console.error('Error saving lineup:', e); }
+}
+
+// --- Coach Notes ---
+async function loadCoachNotes(runName) {
+    if (!runName) return;
+    const content = document.getElementById('coachNotesContent');
+    if (!content) return;
+    try {
+        const resp = await fetch(`/api/runs/${runName}/notes`);
+        if (!resp.ok) { content.innerHTML = '<p class="loading">No notes</p>'; return; }
+        const data = await resp.json();
+        const notes = data.notes || [];
+        if (!notes.length) { content.innerHTML = '<p class="loading">No notes yet</p>'; return; }
+        content.innerHTML = notes.map(n => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:0.3rem 0;border-bottom:1px solid #333;font-size:0.8rem;">
+                <div><span style="color:#888;">[${escapeHtml(n.category || 'general')}]</span> ${escapeHtml(n.text)}</div>
+                <button class="identity-btn" style="font-size:0.7rem;padding:0.15rem 0.5rem;" onclick="deleteCoachNote('${n.id}')">X</button>
+            </div>
+        `).join('');
+    } catch (e) { console.error('Error loading notes:', e); content.innerHTML = '<p class="loading">Error loading notes</p>'; }
+}
+
+async function addCoachNote() {
+    if (!currentRun) return;
+    const textEl = document.getElementById('coachNoteText');
+    const catEl = document.getElementById('coachNoteCategory');
+    const text = textEl?.value?.trim();
+    if (!text) return;
+    try {
+        await fetch(`/api/runs/${currentRun}/notes`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text, category: catEl?.value || 'general'}),
+        });
+        if (textEl) textEl.value = '';
+        loadCoachNotes(currentRun);
+    } catch (e) { console.error('Error adding note:', e); }
+}
+
+async function deleteCoachNote(noteId) {
+    if (!currentRun) return;
+    try {
+        await fetch(`/api/runs/${currentRun}/notes/${noteId}`, {method: 'DELETE'});
+        loadCoachNotes(currentRun);
+    } catch (e) { console.error('Error deleting note:', e); }
+}
+
+// --- Player Spotlight Config ---
+async function loadSpotlightConfig(runName) {
+    if (!runName) return;
+    try {
+        const resp = await fetch(`/api/runs/${runName}/spotlight_config`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const el = (id) => document.getElementById(id);
+        if (el('spotlightBallDistance')) el('spotlightBallDistance').value = data.ball_distance_threshold || 140;
+        if (el('spotlightTimeOnBall')) el('spotlightTimeOnBall').value = data.time_on_ball_seconds || 1.5;
+        if (el('spotlightPreBuffer')) el('spotlightPreBuffer').value = data.pre_buffer_seconds || 3.0;
+        if (el('spotlightPostBuffer')) el('spotlightPostBuffer').value = data.post_buffer_seconds || 3.0;
+    } catch (e) { console.error('Error loading spotlight config:', e); }
+}
+
+async function saveSpotlightConfig() {
+    if (!currentRun) return;
+    const el = (id) => document.getElementById(id);
+    try {
+        await fetch(`/api/runs/${currentRun}/spotlight_config`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                ball_distance_threshold: parseFloat(el('spotlightBallDistance')?.value) || 140,
+                time_on_ball_seconds: parseFloat(el('spotlightTimeOnBall')?.value) || 1.5,
+                pre_buffer_seconds: parseFloat(el('spotlightPreBuffer')?.value) || 3.0,
+                post_buffer_seconds: parseFloat(el('spotlightPostBuffer')?.value) || 3.0,
+            }),
+        });
+    } catch (e) { console.error('Error saving spotlight config:', e); }
 }
 
 // Load tracks for overlay rendering (progressive loading in windows)
@@ -4759,7 +4935,7 @@ function renderOnboardingCard() {
                 </div>
                 <div class="onboarding-step">
                     <div class="onboarding-step-number">3</div>
-                    <p>Review events, player reels, and analytics here</p>
+                    <p>Review match events here, then use the menu for Player Reels and Season Trends</p>
                 </div>
             </div>
             <button class="onboarding-dismiss" onclick="dismissOnboarding()">Dismiss</button>
@@ -4789,7 +4965,7 @@ function toggleNav() {
 
 function showView(viewName) {
     // Hide all views
-    const views = ['matchAnalysisView', 'teamManagerView', 'playerManagerView'];
+    const views = ['matchAnalysisView', 'playerReelsView', 'seasonTrendsView', 'teamManagerView', 'playerManagerView'];
     views.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = id === viewName ? '' : 'none';
@@ -4800,14 +4976,22 @@ function showView(viewName) {
         item.classList.toggle('active', item.dataset.view === viewName);
     });
 
-    // Close nav
-    toggleNav();
+    // Close nav if opened from burger
+    const panel = document.getElementById('navPanel');
+    if (panel && panel.classList.contains('open')) {
+        toggleNav();
+    }
 
     // Load data when switching to views
     if (viewName === 'teamManagerView') {
         loadTeams();
     } else if (viewName === 'playerManagerView') {
         loadPlayersManager();
+    } else if (viewName === 'playerReelsView' || viewName === 'seasonTrendsView') {
+        updateCrossViewContexts();
+        if (!currentRun) {
+            showToast('Select a run in Match Analysis to load this workspace.', 'info');
+        }
     }
 }
 
