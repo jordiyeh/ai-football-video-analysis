@@ -200,6 +200,10 @@ class TacticalInferencer:
         events.extend(self._infer_build_up_events(possession_rows=possession_rows, fps=fps))
         events.extend(self._infer_pressing_events(pressing_rows=pressing_rows, fps=fps))
         events.extend(self._infer_defending_events(pressing_rows=pressing_rows, fps=fps))
+        events.extend(self._infer_counter_press_events(
+            possession_rows=possession_rows, pressing_rows=pressing_rows, fps=fps,
+        ))
+        events.extend(self._infer_defending_subtypes(pressing_rows=pressing_rows, fps=fps))
         events.extend(self._infer_transition_events(possession_rows=possession_rows, fps=fps))
 
         events.sort(key=lambda event: event.timestamp)
@@ -590,6 +594,178 @@ class TacticalInferencer:
                     metadata=metadata,
                 )
             )
+
+        return events
+
+    def _infer_counter_press_events(
+        self,
+        *,
+        possession_rows: list[dict[str, Any]],
+        pressing_rows: list[dict[str, Any]],
+        fps: float,
+    ) -> list[Event]:
+        """Detect immediate pressing after losing possession (counter-press)."""
+        if not possession_rows or not pressing_rows:
+            return []
+
+        # Find possession-change moments (turnovers)
+        turnovers: list[dict[str, Any]] = []
+        for idx in range(1, len(possession_rows)):
+            prev = possession_rows[idx - 1]
+            curr = possession_rows[idx]
+            if str(prev["owner_team"]) != str(curr["owner_team"]):
+                turnovers.append({
+                    "frame_idx": int(curr["frame_idx"]),
+                    "timestamp": float(curr["timestamp"]),
+                    "losing_team": str(prev["owner_team"]),
+                    "gaining_team": str(curr["owner_team"]),
+                })
+
+        # For each turnover, check if the losing team applies high press within N seconds
+        counter_press_window_seconds = 5.0
+        counter_press_min_press_frames = 3
+        events: list[Event] = []
+
+        pressing_by_frame: dict[int, list[dict[str, Any]]] = {}
+        for row in pressing_rows:
+            fi = int(row["frame_idx"])
+            pressing_by_frame.setdefault(fi, []).append(row)
+
+        for turnover in turnovers:
+            t_frame = turnover["frame_idx"]
+            t_time = turnover["timestamp"]
+            losing_team = turnover["losing_team"]
+
+            max_frame = int(t_frame + counter_press_window_seconds * fps)
+            press_frames = 0
+            total_pressure = 0.0
+
+            for fi in range(t_frame, max_frame + 1):
+                press_rows = pressing_by_frame.get(fi, [])
+                for pr in press_rows:
+                    if str(pr["defending_team"]) == losing_team and pr["high_press"]:
+                        press_frames += 1
+                        total_pressure += float(pr["pressure_score"])
+                        break
+
+            if press_frames < counter_press_min_press_frames:
+                continue
+
+            avg_pressure = total_pressure / max(1, press_frames)
+            confidence = _clamp(
+                (0.5 * _clamp(press_frames / 8.0)) + (0.5 * _clamp(avg_pressure)),
+                lower=self.config.min_confidence,
+                upper=self.config.max_confidence,
+            )
+
+            events.append(Event(
+                event_type="counter_press",
+                frame_idx=t_frame,
+                timestamp=t_time,
+                confidence=confidence,
+                metadata={
+                    "tactical_type": "counter_press",
+                    "team_id": losing_team,
+                    "against_team": turnover["gaining_team"],
+                    "press_frames": press_frames,
+                    "window_seconds": counter_press_window_seconds,
+                    "avg_pressure_score": avg_pressure,
+                    "provenance": {
+                        "detector": "tactical_phase_heuristics",
+                        "algorithm_version": TACTICAL_INFERENCE_ALGO_VERSION,
+                        "source": "team_analytics.possession_timeline+pressing_timeline",
+                    },
+                },
+            ))
+
+        return events
+
+    def _infer_defending_subtypes(
+        self,
+        *,
+        pressing_rows: list[dict[str, Any]],
+        fps: float,
+    ) -> list[Event]:
+        """Classify defending runs into box defense, success, and poor recovery."""
+        if not pressing_rows:
+            return []
+
+        # Group non-high-press defending runs (reuse existing grouping)
+        runs = self._group_pressing_runs(pressing_rows=pressing_rows, high_press=False)
+
+        events: list[Event] = []
+        for run in runs:
+            frames = len(run)
+            if frames < self.config.defending_min_frames:
+                continue
+
+            avg_nearest = sum(float(row["nearest_distance_norm"]) for row in run) / max(1, frames)
+            avg_density = sum(int(row["defenders_within_radius"]) for row in run) / max(1, frames)
+
+            if avg_nearest > self.config.defending_max_nearest_distance_norm:
+                continue
+            if avg_density < self.config.defending_min_defenders_within_radius:
+                continue
+
+            start = run[0]
+            end = run[-1]
+
+            # Determine subtype based on position and outcome
+            # Box defense: defending team near own goal area (norm_x < 0.2 or > 0.8)
+            # We approximate by checking if attacking team's carrier is in final third
+            carrier_positions = [
+                float(r.get("nearest_distance_norm", 0.5)) for r in run
+            ]
+
+            # Check if defending concluded with possession regained
+            # (next pressing row, if any, shows same team attacking)
+            last_frame = int(end["frame_idx"])
+            defending_team = str(start["defending_team"])
+
+            # Classify based on compactness and proximity
+            compactness = 1.0 - (avg_nearest / max(1e-6, self.config.defending_max_nearest_distance_norm))
+            is_compact = compactness > 0.6
+
+            # Box defense: very tight defending with high density
+            if is_compact and avg_density >= 2.0:
+                subtype = "defending_box"
+            elif is_compact and avg_nearest < self.config.defending_max_nearest_distance_norm * 0.5:
+                subtype = "defending_success"
+            elif avg_nearest > self.config.defending_max_nearest_distance_norm * 0.8:
+                subtype = "defending_poor_recovery"
+            else:
+                continue  # Standard defending already covered
+
+            confidence = _clamp(
+                (0.4 * _clamp(compactness)) + (0.3 * _clamp(avg_density / 3.0))
+                + (0.3 * _clamp(frames / max(1.0, self.config.defending_min_frames * 2.0))),
+                lower=self.config.min_confidence,
+                upper=self.config.max_confidence,
+            )
+
+            events.append(Event(
+                event_type=subtype,
+                frame_idx=int(start["frame_idx"]),
+                timestamp=float(start["timestamp"]),
+                confidence=confidence,
+                metadata={
+                    "tactical_type": subtype,
+                    "team_id": defending_team,
+                    "attacking_team": str(start["attacking_team"]),
+                    "start_frame_idx": int(start["frame_idx"]),
+                    "end_frame_idx": int(end["frame_idx"]),
+                    "duration_frames": frames,
+                    "duration_seconds": float(end["timestamp"]) - float(start["timestamp"]),
+                    "avg_nearest_distance_norm": avg_nearest,
+                    "avg_defenders_within_radius": avg_density,
+                    "compactness": compactness,
+                    "provenance": {
+                        "detector": "tactical_phase_heuristics",
+                        "algorithm_version": TACTICAL_INFERENCE_ALGO_VERSION,
+                        "source": "team_analytics.pressing_timeline",
+                    },
+                },
+            ))
 
         return events
 

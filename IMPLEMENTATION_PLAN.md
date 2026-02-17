@@ -62,4 +62,25 @@
 - Preserve local-first defaults; cloud/API features are explicitly opt-in
 - Keep guide parity tracked in docs/veo_guide_gap_matrix.md
 
+## Phase 8 — Veo Feature Parity (2026-02-09)
+
+- [x] [SMALL] Step 22 — Shot Map & Heat Map API endpoints: Wire existing `ShotMapRenderer` and `HeatMapRenderer` to API endpoints in `src/ui/server.py`, add UI dropdown options in `index.html`, and route in `app.js`. Test: `pytest tests/unit/test_shot_map.py tests/unit/test_heat_map.py tests/unit/test_ui_server.py -q`
+- [x] [SMALL] Step 23 — Per-player visualization filter: Add player dropdown filter to all visualization panels in `app.js` using dynamic `KNOWN_VIZ_TYPES` routing. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [MEDIUM] Step 24 — Momentum Graph visualization: Create `src/export/visualizations/momentum_graph.py` (`MomentumGraphRenderer`) combining possession share and territorial control into time-series area chart. Add API endpoint and UI integration. Test: `pytest tests/unit/test_momentum_graph.py -q`
+- [x] [MEDIUM] Step 25 — Pass Strings visualization: Create `src/export/visualizations/pass_strings.py` (`PassStringsRenderer`) to visualize consecutive passing chains on field canvas. Add API endpoint and UI integration. Test: `pytest tests/unit/test_pass_strings.py -q`
+- [x] [MEDIUM] Step 26 — Radial/Comparison Chart: Create `src/export/visualizations/radial_chart.py` (`RadialChartRenderer`) for spider/radar team comparison. Add API endpoint and UI integration. Test: `pytest tests/unit/test_radial_chart.py -q`
+- [x] [SMALL] Step 27 — Scoreboard Overlay: Add `draw_scoreboard()` method to `OverlayRenderer` in `src/export/overlay.py` for score + match time display. Test: `pytest tests/unit/test_overlay.py -q`
+- [x] [MEDIUM] Step 28 — Shot on/off target classification: Add `shot_on_target` and `shot_off_target` to `EventType` and `EVENT_TYPE_TO_FAMILY` in `src/events/detection.py`. Add `_classify_shot_target()` to `EventDetector`. Test: `pytest tests/unit/test_event_detection.py -q`
+- [x] [SMALL] Step 29 — Possession Won metric: Add possession transition counting to `build_team_analytics()` in `src/analytics/team.py`. Test: `pytest tests/unit/test_team_analytics.py -q`
+- [x] [SMALL] Step 30 — Possession Minutes: Add absolute possession minutes (seconds/60) alongside percentage in `build_team_analytics()`. Test: `pytest tests/unit/test_team_analytics.py -q`
+- [x] [MEDIUM] Step 31 — Penalty Detection: Add penalty scoring to `SetPieceInferencer._classify_candidate()` in `src/events/set_pieces.py` using penalty spot geometry. Test: `pytest tests/unit/test_set_piece_detection.py -q`
+- [x] [SMALL] Step 32 — Counter Press Detection: Add `_infer_counter_press_events()` to `TacticalInferencer` in `src/events/tactical.py`. Test: `pytest tests/unit/test_tactical_detection.py -q`
+- [x] [MEDIUM] Step 33 — Defending Subtypes: Add `defending_box`, `defending_success`, `defending_poor_recovery` subtypes to `TacticalInferencer` in `src/events/tactical.py`. Test: `pytest tests/unit/test_tactical_detection.py -q`
+- [x] [MEDIUM] Step 34 — Formation/Lineup Authoring UI: Add GET/PUT `/api/runs/{run_name}/lineup` endpoints and UI panel in `app.js`/`index.html`. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [SMALL] Step 35 — Coach Notes/Journal: Add GET/POST/DELETE `/api/runs/{run_name}/notes` CRUD endpoints and UI panel. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [MEDIUM] Step 36 — Multi-Match Aggregated Maps: Add `/api/multi-run/visualizations/{viz_type}` endpoint in `src/ui/server.py` for cross-match visualization aggregation. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [SMALL] Step 37 — Player Spotlight Sensitivity: Add GET/PUT `/api/runs/{run_name}/spotlight_config` endpoints with adjustable ball distance, time-on-ball, and buffer parameters. Test: `pytest tests/unit/test_ui_server.py -q`
+- [x] [MEDIUM] Step 38 — Player Progress Charts: Create `src/export/visualizations/progress_chart.py` (`ProgressChartRenderer`) for cross-match player development visualization. Add API endpoint. Test: `pytest tests/unit/test_progress_chart.py -q`
+- [x] [SMALL] Step 39 — Player Share Links: Add `/api/runs/{run_name}/share/{player_id}` endpoint for generating shareable player highlight permalinks. Test: `pytest tests/unit/test_ui_server.py -q`
+
 ## Completed

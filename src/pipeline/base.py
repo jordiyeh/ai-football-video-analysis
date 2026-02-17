@@ -187,7 +187,19 @@ class Pipeline:
         self.console.print(f"\n[bold green]Starting pipeline for: {video_path.name}[/bold green]\n")
 
         if resume:
-            self.console.print("[yellow]Resume mode enabled - using cached outputs where available[/yellow]\n")
+            sentinel = output_dir / "video_metadata.json"
+            if not sentinel.exists():
+                self.console.print(
+                    "[bold yellow]Warning: resume requested but no prior run "
+                    f"found in {output_dir} (video_metadata.json missing). "
+                    "Starting fresh run instead.[/bold yellow]\n"
+                )
+                resume = False
+            else:
+                self.console.print(
+                    "[yellow]Resume mode enabled - using cached outputs "
+                    "where available[/yellow]\n"
+                )
 
         # Initialize context
         context = {
@@ -207,6 +219,10 @@ class Pipeline:
             )
 
             try:
+                # Re-ensure output dir exists before each stage in case it
+                # was removed externally during a long-running prior stage.
+                output_dir.mkdir(parents=True, exist_ok=True)
+
                 with StageTimer(stage.name) as timer:
                     context = stage.run(context)
 
@@ -235,7 +251,9 @@ class Pipeline:
         # Calculate total duration
         self.metrics.total_duration_seconds = time.perf_counter() - pipeline_start
 
-        # Save run manifest
+        # Save run manifest (re-ensure output dir exists in case it was removed
+        # externally during a long-running stage like overlay)
+        output_dir.mkdir(parents=True, exist_ok=True)
         context["end_time"] = datetime.now().isoformat()
         manifest_path = output_dir / "run_manifest.json"
         self._save_manifest(context, manifest_path)

@@ -23,6 +23,48 @@ Metadata (spreadsheet) can optionally assist with team colors, rosters, jersey n
 
 ---
 
+## Running Python from .venv
+
+The project uses a Python 3.11 virtual environment. The `.venv` symlinks may break after Homebrew Python updates.
+
+### Recommended approach (with PYTHONPATH)
+```bash
+PYTHONPATH=".venv/lib/python3.11/site-packages" /opt/homebrew/bin/python3.11 -c "import pandas; print('works')"
+```
+
+### Running the CLI
+```bash
+PYTHONPATH=".venv/lib/python3.11/site-packages" /opt/homebrew/bin/python3.11 src/cli.py --video match.mp4 --output runs/test
+```
+
+### Running the UI server
+```bash
+PYTHONPATH=".venv/lib/python3.11/site-packages" /opt/homebrew/bin/python3.11 run_ui.py
+```
+
+### If venv symlinks are broken
+The venv may have broken symlinks after Homebrew updates Python. To fix:
+```bash
+# Option 1: Recreate the venv
+rm -rf .venv
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Option 2: Use PYTHONPATH workaround (shown above)
+```
+
+### Quick data analysis
+```bash
+PYTHONPATH=".venv/lib/python3.11/site-packages" /opt/homebrew/bin/python3.11 -c "
+import pandas as pd
+tracks = pd.read_parquet('runs/event_test/tracks.parquet')
+print(tracks.head())
+"
+```
+
+---
+
 ## Repo layout (required)
 - `src/`
   - `cli.py` entrypoint

@@ -1,11 +1,13 @@
 """YOLO-based player and ball detection."""
 
-from pathlib import Path
 from typing import Literal
 
+import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
+
+from src.vision.detect.base import ObjectDetector
 
 
 class Detection:
@@ -58,8 +60,18 @@ class Detection:
         }
 
 
-class YOLODetector:
+class YOLODetector(ObjectDetector):
     """Player and ball detection using YOLOv8."""
+
+    @property
+    def name(self) -> str:
+        """Return the detector name for logging."""
+        return "yolo"
+
+    @property
+    def supported_types(self) -> list[Literal["player", "ball"]]:
+        """Return list of object types this detector can detect."""
+        return ["player", "ball"]
 
     def __init__(
         self,
@@ -68,6 +80,8 @@ class YOLODetector:
         player_class_id: int = 0,  # COCO person class
         ball_class_id: int = 32,  # COCO sports ball class
         confidence_threshold: float = 0.5,
+        ball_confidence_threshold: float | None = None,  # Separate threshold for ball
+        ball_max_size_ratio: float = 0.05,  # Max ball size as fraction of frame
     ):
         """
         Initialize YOLO detector.
@@ -77,12 +91,16 @@ class YOLODetector:
             device: Device to run inference on
             player_class_id: COCO class ID for players
             ball_class_id: COCO class ID for ball
-            confidence_threshold: Minimum confidence for detections
+            confidence_threshold: Minimum confidence for player detections
+            ball_confidence_threshold: Minimum confidence for ball (default: lower than players)
+            ball_max_size_ratio: Maximum ball bbox dimension as fraction of frame
         """
         self.model_name = model_name
         self.player_class_id = player_class_id
         self.ball_class_id = ball_class_id
         self.confidence_threshold = confidence_threshold
+        self.ball_confidence_threshold = ball_confidence_threshold or confidence_threshold * 0.5
+        self.ball_max_size_ratio = ball_max_size_ratio
 
         # Check device availability
         self.device = self._select_device(device)
@@ -92,6 +110,8 @@ class YOLODetector:
 
         # Model will automatically use the correct device on first inference
         print(f"YOLODetector initialized with device: {self.device}")
+        print(f"  Player confidence threshold: {self.confidence_threshold}")
+        print(f"  Ball confidence threshold: {self.ball_confidence_threshold}")
 
     def _select_device(self, requested_device: str) -> str:
         """
@@ -126,10 +146,16 @@ class YOLODetector:
         Returns:
             List of Detection objects
         """
-        threshold = confidence_threshold or self.confidence_threshold
+        player_threshold = confidence_threshold or self.confidence_threshold
+        ball_threshold = self.ball_confidence_threshold
 
-        # Run inference
-        results = self.model(frame, device=self.device, verbose=False)
+        # Get frame dimensions for ball size filtering
+        frame_height, frame_width = frame.shape[:2]
+        max_ball_dimension = max(frame_width, frame_height) * self.ball_max_size_ratio
+
+        # Run inference with lower threshold to catch balls
+        min_threshold = min(player_threshold, ball_threshold)
+        results = self.model(frame, device=self.device, verbose=False, conf=min_threshold)
 
         detections = []
         for result in results:
@@ -138,19 +164,29 @@ class YOLODetector:
                 cls = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                if conf < threshold:
-                    continue
+                # Extract bounding box
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                width = x2 - x1
+                height = y2 - y1
 
-                # Filter to only players and ball
+                # Filter by class and apply class-specific thresholds
                 if cls == self.player_class_id:
+                    if conf < player_threshold:
+                        continue
                     object_type = "player"
                 elif cls == self.ball_class_id:
+                    if conf < ball_threshold:
+                        continue
+                    # Ball size filtering: reject if too large (likely a misclassification)
+                    if max(width, height) > max_ball_dimension:
+                        continue
+                    # Reject very elongated boxes (balls should be roughly square)
+                    aspect_ratio = max(width, height) / (min(width, height) + 1e-6)
+                    if aspect_ratio > 3.0:
+                        continue
                     object_type = "ball"
                 else:
                     continue
-
-                # Extract bounding box
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
 
                 detection = Detection(
                     object_type=object_type,
@@ -177,10 +213,19 @@ class YOLODetector:
         Returns:
             List of detection lists (one per frame)
         """
-        threshold = confidence_threshold or self.confidence_threshold
+        player_threshold = confidence_threshold or self.confidence_threshold
+        ball_threshold = self.ball_confidence_threshold
 
-        # Run batch inference
-        results = self.model(frames, device=self.device, verbose=False)
+        # Get frame dimensions for ball size filtering (use first frame)
+        if len(frames) > 0:
+            frame_height, frame_width = frames[0].shape[:2]
+            max_ball_dimension = max(frame_width, frame_height) * self.ball_max_size_ratio
+        else:
+            max_ball_dimension = float("inf")
+
+        # Run batch inference with lower threshold
+        min_threshold = min(player_threshold, ball_threshold)
+        results = self.model(frames, device=self.device, verbose=False, conf=min_threshold)
 
         all_detections = []
         for result in results:
@@ -191,19 +236,29 @@ class YOLODetector:
                 cls = int(box.cls[0])
                 conf = float(box.conf[0])
 
-                if conf < threshold:
-                    continue
+                # Extract bounding box
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                width = x2 - x1
+                height = y2 - y1
 
-                # Filter to only players and ball
+                # Filter by class and apply class-specific thresholds
                 if cls == self.player_class_id:
+                    if conf < player_threshold:
+                        continue
                     object_type = "player"
                 elif cls == self.ball_class_id:
+                    if conf < ball_threshold:
+                        continue
+                    # Ball size filtering: reject if too large
+                    if max(width, height) > max_ball_dimension:
+                        continue
+                    # Reject very elongated boxes
+                    aspect_ratio = max(width, height) / (min(width, height) + 1e-6)
+                    if aspect_ratio > 3.0:
+                        continue
                     object_type = "ball"
                 else:
                     continue
-
-                # Extract bounding box
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
 
                 detection = Detection(
                     object_type=object_type,
@@ -216,3 +271,104 @@ class YOLODetector:
             all_detections.append(frame_detections)
 
         return all_detections
+
+    def detect_multiscale(
+        self,
+        frame: np.ndarray,
+        scales: list[float] = [0.5, 1.0, 1.5],
+        merge_iou_threshold: float = 0.5,
+        ball_only: bool = False,
+    ) -> list[Detection]:
+        """
+        Multi-scale detection for improved ball detection.
+
+        Runs detection at multiple scales, transforms bboxes back to original
+        coordinates, and merges using soft-NMS.
+
+        Args:
+            frame: Input frame (BGR format from OpenCV)
+            scales: List of scale factors to use
+            merge_iou_threshold: IoU threshold for soft-NMS merging
+            ball_only: If True, only detect at multiple scales for ball
+
+        Returns:
+            List of merged Detection objects
+        """
+        from src.vision.detect.ball_boost import soft_nms
+
+        frame_height, frame_width = frame.shape[:2]
+        all_scale_detections: list[list[Detection]] = []
+
+        for scale in scales:
+            if scale == 1.0:
+                # Use original frame
+                scaled_frame = frame
+                scale_h, scale_w = frame_height, frame_width
+            else:
+                # Resize frame
+                scale_w = int(frame_width * scale)
+                scale_h = int(frame_height * scale)
+
+                # Ensure dimensions are at least 32 (YOLO requirement)
+                scale_w = max(32, scale_w)
+                scale_h = max(32, scale_h)
+
+                interpolation = cv2.INTER_LINEAR if scale > 1.0 else cv2.INTER_AREA
+                scaled_frame = cv2.resize(frame, (scale_w, scale_h), interpolation=interpolation)
+
+            # Run detection
+            detections = self.detect(scaled_frame)
+
+            # Transform bboxes back to original coordinates
+            if scale != 1.0:
+                scale_x = frame_width / scale_w
+                scale_y = frame_height / scale_h
+
+                transformed = []
+                for det in detections:
+                    x1, y1, x2, y2 = det.bbox
+                    new_bbox = (
+                        x1 * scale_x,
+                        y1 * scale_y,
+                        x2 * scale_x,
+                        y2 * scale_y,
+                    )
+                    transformed.append(
+                        Detection(
+                            object_type=det.object_type,
+                            bbox=new_bbox,
+                            confidence=det.confidence,
+                            class_id=det.class_id,
+                        )
+                    )
+                detections = transformed
+
+            all_scale_detections.append(detections)
+
+        # Separate ball and player detections
+        ball_detections = []
+        player_detections = []
+
+        for scale_dets in all_scale_detections:
+            for det in scale_dets:
+                if det.object_type == "ball":
+                    ball_detections.append(det)
+                else:
+                    player_detections.append(det)
+
+        # Apply soft-NMS to ball detections (merge across scales)
+        merged_ball = soft_nms(ball_detections, iou_threshold=merge_iou_threshold)
+
+        # For players, just use the 1.0 scale (multiscale less helpful)
+        if ball_only:
+            # Return original player detections from 1.0 scale only
+            scale_1_idx = scales.index(1.0) if 1.0 in scales else 0
+            player_detections = [
+                d for d in all_scale_detections[scale_1_idx] if d.object_type == "player"
+            ]
+        else:
+            # Apply soft-NMS to player detections too
+            merged_players = soft_nms(player_detections, iou_threshold=merge_iou_threshold)
+            player_detections = merged_players
+
+        return player_detections + merged_ball

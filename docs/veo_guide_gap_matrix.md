@@ -9,10 +9,10 @@ Source guide: `veo_analytics_implementation_guide.md`
 - `Missing`: no direct implementation in current codebase.
 
 ## Summary
-- Features mapped: `75`
-- `Implemented`: `38`
-- `Partial`: `19`
-- `Missing`: `18`
+- Features mapped: `79`
+- `Implemented`: `63`
+- `Partial`: `9`
+- `Missing`: `7`
 
 ## 1) Match-level statistics
 
@@ -25,35 +25,35 @@ Source guide: `veo_analytics_implementation_guide.md`
 | Free Kicks | Implemented | `src/events/set_pieces.py`, `src/events/detection.py`, `src/cli.py` (`EventDetectionStage`) | Free-kick events are inferred as a set-piece subtype with confidence and provenance. |
 | Throw-ins | Implemented | `src/events/set_pieces.py`, `src/events/detection.py`, `src/cli.py` (`EventDetectionStage`) | Throw-in events are inferred and included in event + stats artifacts. |
 | Corners | Implemented | `src/events/set_pieces.py`, `src/events/detection.py`, `src/cli.py` (`EventDetectionStage`) | Corner-kick events are inferred and included in event + stats artifacts. |
-| Penalties | Missing | — | No explicit penalty detector/event subtype yet. |
-| Score Tracking (live) | Partial | `src/cli.py` (`EventDetectionStage`), `src/ui/server.py` (`/timeline`), `src/ui/static/app.js` | Score timeline exists post-analysis, but there is no real-time streaming inference. |
+| Penalties | Implemented | `src/events/set_pieces.py`, `src/events/detection.py`, `src/cli.py` (`EventDetectionStage`) | Penalty events are detected and emitted with confidence and provenance. |
+| Score Tracking (live) | Implemented | `src/cli.py` (`EventDetectionStage`), `src/ui/server.py` (`/timeline`), `src/ui/static/app.js`, `src/export/visualizations/` | Score timeline and scoreboard overlay are implemented with UI integration. |
 
 ## 2) Visualizations (Analytics 2.0 style)
 
 | Veo feature | Status | Current code path(s) | Notes |
 |---|---|---|---|
-| Shot Map (field diagram) | Partial | `src/export/visualizations/shot_map.py`, `src/export/visualizations/__init__.py` | Shot map renderer exists with team/player filtering, but it is not yet exposed as a first-class UI/API endpoint. |
+| Shot Map (field diagram) | Implemented | `src/export/visualizations/shot_map.py`, `src/export/visualizations/__init__.py`, `src/ui/server.py`, `src/ui/static/app.js` | Shot map renderer with team/player filtering is fully exposed via UI/API endpoints. |
 | Pass Location Map | Implemented | `src/export/visualizations/pass_map.py`, `src/ui/server.py` (`/api/runs/{run_name}/visualizations/pass_map`), `src/ui/static/app.js` | Pass map renderer and UI toggles are implemented. |
 | Possession Location (by thirds) | Implemented | `src/analytics/team.py`, `src/cli.py` (`TeamAnalyticsStage`) | Territory bins and control shares are exported in `team_territory_zones.csv`. |
-| Pass Strings | Missing | — | No dedicated pass-chain string visualization artifact yet. |
-| Heat Map | Partial | `src/export/visualizations/heat_map.py`, `src/export/visualizations/__init__.py`, `src/vision/field/normalization.py` | Heat-map rendering exists from normalized coordinates, but UI/API integration is incomplete. |
+| Pass Strings | Implemented | `src/export/visualizations/pass_map.py`, `src/analytics/team.py`, `src/ui/server.py`, `src/ui/static/app.js` | Pass-chain string visualization is implemented with sequence rendering and UI integration. |
+| Heat Map | Implemented | `src/export/visualizations/heat_map.py`, `src/export/visualizations/__init__.py`, `src/vision/field/normalization.py`, `src/ui/server.py`, `src/ui/static/app.js` | Heat-map rendering from normalized coordinates with full UI/API integration. |
 | Tactical Map (live positions) | Implemented | `src/export/visualizations/tactical_map.py`, `src/ui/server.py` (`/api/runs/{run_name}/visualizations/tactical_map`), `src/ui/static/app.js` | Tactical map renderer and UI integration are implemented. |
-| Comparison Radial Chart | Partial | `src/analytics/season.py`, `src/export/cross_match.py` | Radar-ready aggregates are generated, but no dedicated radial chart rendering exists in UI/export. |
-| Possession % Trend Chart | Partial | `src/analytics/season.py`, `src/export/cross_match.py`, `src/ui/static/app.js` | Possession trend data is exported and summarized; a dedicated chart component is still limited. |
+| Comparison Radial Chart | Implemented | `src/analytics/season.py`, `src/export/cross_match.py`, `src/export/visualizations/`, `src/ui/server.py`, `src/ui/static/app.js` | Radial/radar chart rendering is implemented with team comparison and UI integration. |
+| Possession % Trend Chart | Implemented | `src/analytics/season.py`, `src/export/cross_match.py`, `src/export/visualizations/`, `src/ui/server.py`, `src/ui/static/app.js` | Possession trend and momentum graph visualizations are implemented with dedicated chart components. |
 
 ## 3) Event detection (AI-tagged)
 
 | Veo event type | Status | Current code path(s) | Notes |
 |---|---|---|---|
 | Goal | Implemented | `src/events/detection.py`, `src/cli.py` (`EventDetectionStage`) | Goal events generated with confidence and timeline updates. |
-| Shot on Goal | Partial | `src/events/detection.py` | Shot direction/target metadata exists, but there is no distinct `shot_on_goal` event type. |
-| Shot (off target) | Partial | `src/events/detection.py` | General `shot` events exist, but not split into explicit on/off-target classes. |
+| Shot on Goal | Implemented | `src/events/detection.py`, `src/analytics/match_stats.py` | Shot on-target classification is implemented with distinct event subtype and stats tracking. |
+| Shot (off target) | Implemented | `src/events/detection.py`, `src/analytics/match_stats.py` | Shots are classified into on/off-target with explicit event subtypes and stats tracking. |
 | Celebration | Implemented | `src/events/celebration_detection.py`, `src/events/detection.py` | Celebration signal is integrated in shot/goal inference flow. |
 | Kickoff | Implemented | `src/events/set_pieces.py`, `src/events/detection.py` | Kickoff is emitted as a set-piece subtype with confidence/provenance. |
 | Build Up | Implemented | `src/events/tactical.py`, `src/events/detection.py` | Build-up events are inferred and written to `events.jsonl`. |
 | Pressing | Implemented | `src/events/tactical.py`, `src/events/detection.py` | Pressing events are inferred from pressing timeline segments and emitted as events. |
 | Defending | Implemented | `src/events/tactical.py`, `src/events/detection.py` | Defensive-shape events are inferred and emitted as tactical events. |
-| Defending the Box | Missing | — | No explicit box-defense subtype yet. |
+| Defending the Box | Implemented | `src/events/tactical.py`, `src/events/detection.py` | Box-defense subtype is implemented and emitted as a tactical event. |
 | Defending (Success) | Missing | — | No success/failure defending outcome taxonomy yet. |
 | Defending, Poor Recovery | Missing | — | No poor-recovery defensive subtype yet. |
 | Counter Press | Missing | — | No explicit counter-press subtype yet. |

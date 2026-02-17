@@ -67,7 +67,7 @@ class TestShotDetectionPipeline:
 
         # Should detect at least one shot in phase 2
         assert len(shots) >= 1
-        assert shots[0].event_type == "shot"
+        assert shots[0].event_type in ("shot", "shot_on_target", "shot_off_target")
         # Shot should be detected during high-speed phase
         assert 20 <= shots[0].frame_idx < 40
 
@@ -328,7 +328,7 @@ class TestCombinedEventDetection:
 
         # Verify event structure
         for shot in shots:
-            assert shot.event_type == "shot"
+            assert shot.event_type in ("shot", "shot_on_target", "shot_off_target")
             assert 0 <= shot.frame_idx < 300
             assert shot.confidence > 0
 

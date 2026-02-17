@@ -1,0 +1,44 @@
+[
+  {
+    "frame_idx": 0,
+    "track_id": 1,
+    "bbox": [100.0, 100.0, 150.0, 200.0],
+    "confidence": 0.92,
+    "object_type": "player"
+  },
+  {
+    "frame_idx": 0,
+    "track_id": 2,
+    "bbox": [200.0, 150.0, 250.0, 250.0],
+    "confidence": 0.88,
+    "object_type": "player"
+  },
+  {
+    "frame_idx": 0,
+    "track_id": 3,
+    "bbox": [960.0, 540.0, 980.0, 560.0],
+    "confidence": 0.75,
+    "object_type": "ball"
+  },
+  {
+    "frame_idx": 1,
+    "track_id": 1,
+    "bbox": [105.0, 102.0, 155.0, 202.0],
+    "confidence": 0.91,
+    "object_type": "player"
+  },
+  {
+    "frame_idx": 1,
+    "track_id": 2,
+    "bbox": [203.0, 151.0, 253.0, 251.0],
+    "confidence": 0.87,
+    "object_type": "player"
+  },
+  {
+    "frame_idx": 1,
+    "track_id": 3,
+    "bbox": [962.0, 538.0, 982.0, 558.0],
+    "confidence": 0.78,
+    "object_type": "ball"
+  }
+]

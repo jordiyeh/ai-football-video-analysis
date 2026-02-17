@@ -1,0 +1,51 @@
+[run]
+source = src
+branch = True
+omit =
+    src/__init__.py
+    src/*/__init__.py
+    src/ui/static/*
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    # Standard exclusions
+    pragma: no cover
+
+    # Debug-only code
+    def __repr__
+    def __str__
+
+    # Defensive assertions
+    raise AssertionError
+    raise NotImplementedError
+
+    # Type checking imports
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Logging
+    if self.debug:
+    if debug:
+
+    # Main block
+    if __name__ == .__main__.:
+
+    # Pass statements
+    pass
+
+show_missing = True
+precision = 2
+
+# Fail under threshold
+fail_under = 0
+
+[html]
+directory = coverage_html
+
+[xml]
+output = coverage.xml

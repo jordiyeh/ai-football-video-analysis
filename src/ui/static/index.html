@@ -1087,59 +1087,159 @@
             opacity: 0.85;
         }
 
+        .panel-section-nav {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.45rem;
+            margin: 0.2rem 0 1rem 0;
+        }
+
+        .panel-section-nav button {
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+            color: var(--muted);
+            border-radius: 999px;
+            padding: 0.3rem 0.55rem;
+            font-size: 0.74rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .panel-section-nav button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-1px);
+        }
+
         .tags-section {
             margin-top: 1rem;
             border-top: 1px solid var(--border);
             padding-top: 1rem;
+            scroll-margin-top: 1rem;
         }
 
         .tags-header {
             display: flex;
             justify-content: space-between;
             align-items: baseline;
-            margin-bottom: 0.6rem;
+            margin-bottom: 0.45rem;
+            gap: 0.55rem;
+            flex-wrap: wrap;
         }
 
         .tags-header h4 {
             margin: 0;
             color: var(--accent);
-            font-size: 0.95rem;
+            font-size: 1rem;
         }
 
-        .tags-create-controls {
+        .tags-description {
+            color: var(--muted);
+            font-size: 0.78rem;
+            margin-bottom: 0.55rem;
+            line-height: 1.35;
+        }
+
+        .tags-help-grid {
             display: grid;
-            grid-template-columns: 1.1fr 0.9fr 0.6fr 0.6fr 1.2fr auto;
-            gap: 0.45rem;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.4rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .tags-help-item {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-soft);
+            padding: 0.4rem 0.5rem;
+            color: var(--muted);
+            font-size: 0.72rem;
+            line-height: 1.3;
+        }
+
+        .tags-help-item strong {
+            color: var(--text);
+            font-size: 0.73rem;
+        }
+
+        .tags-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel-soft);
+            padding: 0.6rem;
             margin-bottom: 0.55rem;
         }
 
+        .tags-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.45rem;
+            flex-wrap: wrap;
+        }
+
+        .tags-card-title {
+            margin: 0;
+            font-size: 0.82rem;
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .tags-create-controls,
         .tags-filter-controls {
             display: grid;
-            grid-template-columns: 1.4fr 1fr 1fr auto auto;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 0.45rem;
-            margin-bottom: 0.65rem;
+        }
+
+        .tags-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.22rem;
+        }
+
+        .tags-field-label {
+            color: var(--muted);
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            font-weight: 700;
         }
 
         .tags-create-controls .form-input,
         .tags-filter-controls .form-input {
-            font-size: 0.76rem;
-            padding: 0.36rem 0.5rem;
+            font-size: 0.78rem;
+            padding: 0.4rem 0.5rem;
+        }
+
+        .tags-actions {
+            display: flex;
+            gap: 0.45rem;
+            margin-top: 0.55rem;
+            flex-wrap: wrap;
+        }
+
+        .tags-actions .identity-btn {
+            min-width: 120px;
         }
 
         .tags-list {
-            max-height: 210px;
+            max-height: 230px;
             overflow-y: auto;
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.35rem;
+            border-radius: 8px;
+            padding: 0.4rem;
             background: var(--panel-soft);
         }
 
         .tag-item {
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.45rem 0.55rem;
+            border-radius: 8px;
+            padding: 0.5rem 0.55rem;
             margin-bottom: 0.4rem;
             cursor: pointer;
             transition: all 0.2s;
@@ -1165,12 +1265,12 @@
         .tag-item-title {
             color: var(--text);
             font-weight: 700;
-            font-size: 0.78rem;
+            font-size: 0.84rem;
         }
 
         .tag-item-meta {
             color: var(--muted);
-            font-size: 0.72rem;
+            font-size: 0.74rem;
             line-height: 1.35;
         }
 
@@ -1180,9 +1280,9 @@
             border: 1px solid var(--border);
             background: var(--panel-soft);
             border-radius: 999px;
-            padding: 0.04rem 0.4rem;
+            padding: 0.06rem 0.42rem;
             margin-right: 0.3rem;
-            font-size: 0.68rem;
+            font-size: 0.69rem;
             color: var(--muted);
         }
 
@@ -2371,6 +2471,18 @@
                 grid-template-columns: 1fr;
             }
 
+            .tags-actions {
+                flex-direction: column;
+            }
+
+            .tags-actions .identity-btn {
+                width: 100%;
+            }
+
+            .panel-section-nav {
+                grid-template-columns: 1fr 1fr;
+            }
+
             .filter-separator {
                 display: none;
             }
@@ -2435,6 +2547,45 @@
         }
         .nav-item:hover { background: var(--panel-soft); }
         .nav-item.active { background: var(--accent); color: #fff; }
+
+        .nav-group-label {
+            color: var(--muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0.95rem 0 0.35rem 0.2rem;
+            font-weight: 700;
+        }
+
+        .analysis-subview-shell {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 8px 24px rgba(25, 47, 84, 0.06);
+        }
+
+        .analysis-subview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 0.65rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .analysis-subview-header h2 {
+            color: var(--accent);
+            font-size: 1.2rem;
+            margin: 0;
+        }
+
+        #playerReelsView .player-reels-section,
+        #seasonTrendsView .season-section {
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+        }
 
         /* ── Team Manager ── */
         .team-manager-header {
@@ -2753,7 +2904,11 @@
     <div class="nav-overlay" id="navOverlay" onclick="toggleNav()"></div>
     <nav class="nav-panel" id="navPanel">
         <h3 style="margin-bottom:1rem;color:var(--accent);">Navigation</h3>
+        <div class="nav-group-label">Match Workspace</div>
         <a class="nav-item active" data-view="matchAnalysisView" onclick="showView('matchAnalysisView')">Match Analysis</a>
+        <a class="nav-item" data-view="playerReelsView" onclick="showView('playerReelsView')">Player Reels</a>
+        <a class="nav-item" data-view="seasonTrendsView" onclick="showView('seasonTrendsView')">Season Trends</a>
+        <div class="nav-group-label">Roster</div>
         <a class="nav-item" data-view="teamManagerView" onclick="showView('teamManagerView')">Team Manager</a>
         <a class="nav-item" data-view="playerManagerView" onclick="showView('playerManagerView')">Players</a>
     </nav>
@@ -2936,8 +3091,14 @@
                 <div class="score" id="scoreDisplay">
                     <div class="score-display">0 - 0</div>
                 </div>
+                <div class="panel-section-nav" role="navigation" aria-label="Match panel sections">
+                    <button onclick="scrollPanelSection('eventsSection')">Events</button>
+                    <button onclick="scrollPanelSection('matchTagsSection')">Tags</button>
+                    <button onclick="scrollPanelSection('matchAnalyticsSection')">Analytics</button>
+                    <button onclick="scrollPanelSection('identityReviewSection')">Identity</button>
+                </div>
 
-                <div class="events-header">
+                <div class="events-header" id="eventsSection">
                     <div class="collapsible-header" onclick="toggleCollapsible('events')">
                         <h3>Events</h3>
                         <span class="collapsible-chevron" id="chevron-events">&#9660;</span>
@@ -2960,32 +3121,77 @@
                 </div>
                 <div id="eventsList"></div>
 
-                <div class="tags-section">
+                <div class="tags-section" id="matchTagsSection">
                     <div class="tags-header">
                         <h4>Tags</h4>
-                        <span class="panel-note">Manual annotations scoped to this run</span>
+                        <span class="panel-note">Match-scoped annotations for the selected run</span>
+                    </div>
+                    <p class="tags-description">Use tags to mark moments tied to this specific match. Add at the current video time, then filter to find the annotations quickly.</p>
+                    <div class="tags-help-grid">
+                        <div class="tags-help-item"><strong>Label</strong><br>What happened (example: press trap).</div>
+                        <div class="tags-help-item"><strong>Category</strong><br>Group tags (tactical, player, general).</div>
+                        <div class="tags-help-item"><strong>Track ID</strong><br>Optional player or ball track link.</div>
+                        <div class="tags-help-item"><strong>Confidence</strong><br>Optional certainty score from 0 to 1.</div>
                     </div>
 
-                    <div class="tags-create-controls">
-                        <input id="tagLabelInput" type="text" class="form-input" placeholder="Label (required)">
-                        <input id="tagCategoryInput" type="text" class="form-input" value="general" placeholder="Category">
-                        <input id="tagTrackInput" type="number" class="form-input" placeholder="Track ID">
-                        <input id="tagConfidenceInput" type="number" min="0" max="1" step="0.05" class="form-input" placeholder="Conf">
-                        <input id="tagNotesInput" type="text" class="form-input" placeholder="Notes (optional)">
-                        <button class="identity-btn primary" onclick="addManualTagAtCurrentTime()">+ Tag @ Time</button>
+                    <div class="tags-card">
+                        <div class="tags-card-header">
+                            <h5 class="tags-card-title">Add Tag at Current Playback Time</h5>
+                        </div>
+                        <div class="tags-create-controls">
+                            <label class="tags-field">
+                                <span class="tags-field-label">Label *</span>
+                                <input id="tagLabelInput" type="text" class="form-input" placeholder="Example: Build-up overload">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Category</span>
+                                <input id="tagCategoryInput" type="text" class="form-input" value="general" placeholder="general">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Track ID (optional)</span>
+                                <input id="tagTrackInput" type="number" class="form-input" placeholder="2">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Confidence (optional)</span>
+                                <input id="tagConfidenceInput" type="number" min="0" max="1" step="0.05" class="form-input" placeholder="0.85">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Notes (optional)</span>
+                                <input id="tagNotesInput" type="text" class="form-input" placeholder="Why this moment matters">
+                            </label>
+                        </div>
+                        <div class="tags-actions">
+                            <button class="identity-btn primary" onclick="addManualTagAtCurrentTime()">+ Add Tag @ Time</button>
+                        </div>
                     </div>
 
-                    <div class="tags-filter-controls">
-                        <input id="tagFilterLabel" type="text" class="form-input" placeholder="Filter by label">
-                        <input id="tagFilterCategory" type="text" class="form-input" placeholder="Filter by category">
-                        <select id="tagFilterSource" class="form-input">
-                            <option value="all">Source: All</option>
-                            <option value="manual">Source: Manual</option>
-                            <option value="auto">Source: Auto</option>
-                            <option value="imported">Source: Imported</option>
-                        </select>
-                        <button class="identity-btn" onclick="applyTagFilters()">Apply</button>
-                        <button class="identity-btn" onclick="resetTagFilters()">Reset</button>
+                    <div class="tags-card">
+                        <div class="tags-card-header">
+                            <h5 class="tags-card-title">Filter Tags</h5>
+                        </div>
+                        <div class="tags-filter-controls">
+                            <label class="tags-field">
+                                <span class="tags-field-label">Label</span>
+                                <input id="tagFilterLabel" type="text" class="form-input" placeholder="Contains label text">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Category</span>
+                                <input id="tagFilterCategory" type="text" class="form-input" placeholder="general / tactical / player">
+                            </label>
+                            <label class="tags-field">
+                                <span class="tags-field-label">Source</span>
+                                <select id="tagFilterSource" class="form-input">
+                                    <option value="all">All sources</option>
+                                    <option value="manual">Manual</option>
+                                    <option value="auto">Auto</option>
+                                    <option value="imported">Imported</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="tags-actions">
+                            <button class="identity-btn" onclick="applyTagFilters()">Apply Filters</button>
+                            <button class="identity-btn" onclick="resetTagFilters()">Reset</button>
+                        </div>
                     </div>
 
                     <div id="tagsList" class="tags-list">
@@ -2994,7 +3200,7 @@
                 </div>
                 </div>
 
-                <div class="team-analytics-section">
+                <div class="team-analytics-section" id="matchAnalyticsSection">
                     <div class="collapsible-header" onclick="toggleCollapsible('analytics')">
                         <h3>Match Analytics</h3>
                         <div style="display:flex;gap:0.4rem;align-items:center;">
@@ -3002,6 +3208,7 @@
                             <span class="collapsible-chevron" id="chevron-analytics">&#9660;</span>
                         </div>
                     </div>
+                    <div class="panel-note" style="margin-bottom:0.55rem;">Metrics in this section are scoped to the currently selected match run.</div>
                     <div id="collapsible-analytics">
                         <div class="match-stats-card">
                             <div class="match-stats-card-header">
@@ -3020,7 +3227,12 @@
                             <div class="visualization-controls">
                                 <select id="visualizationType" class="form-input" onchange="onVisualizationControlsChanged()">
                                     <option value="pass_map">Pass Map</option>
+                                    <option value="shot_map">Shot Map</option>
+                                    <option value="heat_map">Heat Map</option>
                                     <option value="tactical_map">Tactical Map</option>
+                                    <option value="momentum">Momentum Graph</option>
+                                    <option value="pass_strings">Pass Strings</option>
+                                    <option value="radial_chart">Radial Chart</option>
                                 </select>
                                 <select id="visualizationTeamFilter" class="form-input" onchange="onVisualizationControlsChanged()">
                                     <option value="">Team: All</option>
@@ -3058,6 +3270,65 @@
                         <div id="teamAnalyticsContent">
                             <p class="loading">No team analytics data loaded</p>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Formation / Lineup Section -->
+                <div class="match-stats-section" style="margin-top:1.5rem;">
+                    <div class="match-stats-card-header">
+                        <span class="match-stats-card-title">Formation &amp; Lineup</span>
+                        <button class="section-export-btn" onclick="saveLineup()">Save</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:auto 1fr;gap:0.5rem 1rem;align-items:center;font-size:0.82rem;padding:0.5rem 0;">
+                        <label>Formation:</label>
+                        <input id="lineupFormation" class="form-input" placeholder="e.g. 4-3-3" style="max-width:120px;">
+                        <label>Notes:</label>
+                        <input id="lineupNotes" class="form-input" placeholder="Match lineup notes">
+                    </div>
+                    <div id="lineupContent">
+                        <p class="loading">Select a run to manage lineup</p>
+                    </div>
+                </div>
+
+                <!-- Coach Notes Section -->
+                <div class="match-stats-section" style="margin-top:1.5rem;">
+                    <div class="match-stats-card-header">
+                        <span class="match-stats-card-title">Coach Notes</span>
+                        <button class="section-export-btn" onclick="addCoachNote()">Add Note</button>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;padding:0.5rem 0;">
+                        <input id="coachNoteText" class="form-input" placeholder="Type a note..." style="flex:1;">
+                        <select id="coachNoteCategory" class="form-input" style="max-width:120px;">
+                            <option value="general">General</option>
+                            <option value="tactical">Tactical</option>
+                            <option value="player">Player</option>
+                            <option value="improvement">Improvement</option>
+                        </select>
+                    </div>
+                    <div id="coachNotesContent">
+                        <p class="loading">Select a run to view notes</p>
+                    </div>
+                </div>
+
+                <!-- Player Spotlight Controls Section -->
+                <div class="match-stats-section" style="margin-top:1.5rem;">
+                    <div class="match-stats-card-header">
+                        <span class="match-stats-card-title">Player Spotlight Settings</span>
+                        <button class="section-export-btn" onclick="saveSpotlightConfig()">Save</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;padding:0.5rem 0;">
+                        <label>Ball Distance (px):
+                            <input id="spotlightBallDistance" class="form-input" type="number" value="140" min="10" max="500">
+                        </label>
+                        <label>Time on Ball (s):
+                            <input id="spotlightTimeOnBall" class="form-input" type="number" value="1.5" min="0.1" max="10" step="0.1">
+                        </label>
+                        <label>Pre-buffer (s):
+                            <input id="spotlightPreBuffer" class="form-input" type="number" value="3.0" min="0" max="30" step="0.5">
+                        </label>
+                        <label>Post-buffer (s):
+                            <input id="spotlightPostBuffer" class="form-input" type="number" value="3.0" min="0" max="30" step="0.5">
+                        </label>
                     </div>
                 </div>
 
@@ -3164,7 +3435,7 @@
                     </div>
                 </div>
 
-                <div class="identity-section">
+                <div class="identity-section" id="identityReviewSection">
                     <div class="player-reels-header">
                         <div class="collapsible-header" onclick="toggleCollapsible('identity')">
                             <h3>Identity Review</h3>
@@ -3172,6 +3443,7 @@
                         </div>
                         <span class="panel-note" id="identitySummary">No identity data loaded</span>
                     </div>
+                    <div class="panel-note" style="margin-bottom:0.55rem;">Identity assignments here apply to this selected match run.</div>
 
                     <div id="collapsible-identity">
                     <div class="identity-controls">
@@ -3318,6 +3590,34 @@
         </div>
 
         </div><!-- /matchAnalysisView -->
+
+        <!-- ═══ Player Reels View (cross-match) ═══ -->
+        <div id="playerReelsView" style="display:none;">
+            <div class="analysis-subview-shell">
+                <div class="analysis-subview-header">
+                    <h2>Player Reels</h2>
+                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                        <span class="panel-note" id="playerReelsRunContext">Select a run in Match Analysis to load reels.</span>
+                        <button class="identity-btn" onclick="showView('matchAnalysisView')">Open Match Workspace</button>
+                    </div>
+                </div>
+                <div id="playerReelsMount"></div>
+            </div>
+        </div>
+
+        <!-- ═══ Season Trends View (cross-match) ═══ -->
+        <div id="seasonTrendsView" style="display:none;">
+            <div class="analysis-subview-shell">
+                <div class="analysis-subview-header">
+                    <h2>Season Trends</h2>
+                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                        <span class="panel-note" id="seasonRunContext">Select a run in Match Analysis to refresh trends.</span>
+                        <button class="identity-btn" onclick="showView('matchAnalysisView')">Open Match Workspace</button>
+                    </div>
+                </div>
+                <div id="seasonTrendsMount"></div>
+            </div>
+        </div>
 
         <!-- ═══ Team Manager View ═══ -->
         <div id="teamManagerView" style="display:none;">

@@ -126,6 +126,87 @@ class OverlayRenderer:
 
         return annotated
 
+    def draw_scoreboard(
+        self,
+        frame: np.ndarray,
+        score: dict[str, int] | None = None,
+        match_time: float | None = None,
+        team_names: dict[str, str] | None = None,
+    ) -> np.ndarray:
+        """
+        Draw scoreboard overlay showing current score and match time.
+
+        Args:
+            frame: Input frame
+            score: Dict with team_id -> goals (e.g. {"ours": 1, "opponent": 0})
+            match_time: Current timestamp in seconds
+            team_names: Optional mapping of team_id -> display name
+
+        Returns:
+            Annotated frame
+        """
+        if score is None and match_time is None:
+            return frame
+
+        annotated = frame.copy()
+        h, w = annotated.shape[:2]
+
+        team_names = team_names or {}
+        score = score or {}
+
+        # Format time as MM:SS
+        time_str = ""
+        if match_time is not None:
+            minutes = int(match_time // 60)
+            seconds = int(match_time % 60)
+            time_str = f"{minutes:02d}:{seconds:02d}"
+
+        # Build score text
+        teams = sorted(score.keys())
+        if len(teams) >= 2:
+            name_a = team_names.get(teams[0], teams[0]).upper()[:10]
+            name_b = team_names.get(teams[1], teams[1]).upper()[:10]
+            score_text = f"{name_a} {score[teams[0]]} - {score[teams[1]]} {name_b}"
+        elif len(teams) == 1:
+            name_a = team_names.get(teams[0], teams[0]).upper()[:10]
+            score_text = f"{name_a} {score[teams[0]]}"
+        else:
+            score_text = ""
+
+        # Combine
+        display = f"{score_text}  {time_str}".strip() if score_text else time_str
+
+        if not display:
+            return annotated
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = max(0.5, min(1.2, w / 1200))
+        thickness = max(1, int(font_scale * 2))
+
+        (text_w, text_h), baseline = cv2.getTextSize(display, font, font_scale, thickness)
+
+        # Position: top-center
+        pad_x, pad_y = 16, 8
+        box_w = text_w + pad_x * 2
+        box_h = text_h + baseline + pad_y * 2
+        x_start = (w - box_w) // 2
+        y_start = 10
+
+        # Semi-transparent background
+        overlay = annotated.copy()
+        cv2.rectangle(overlay, (x_start, y_start),
+                      (x_start + box_w, y_start + box_h),
+                      (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.65, annotated, 0.35, 0, annotated)
+
+        # Draw text
+        text_x = x_start + pad_x
+        text_y = y_start + pad_y + text_h
+        cv2.putText(annotated, display, (text_x, text_y),
+                    font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+
+        return annotated
+
     def draw_tracks(
         self,
         frame: np.ndarray,

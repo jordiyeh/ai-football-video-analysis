@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 EventType = Literal[
     "shot",
+    "shot_on_target",
+    "shot_off_target",
     "goal",
     "pass",
     "set_piece",
@@ -25,9 +27,14 @@ EventType = Literal[
     "corner_kick",
     "free_kick",
     "goal_kick",
+    "penalty",
     "build_up",
     "pressing",
+    "counter_press",
     "defending",
+    "defending_box",
+    "defending_success",
+    "defending_poor_recovery",
     "transition",
     "tackle",
     "other",
@@ -39,12 +46,17 @@ EventFamily = Literal["shot", "goal", "pass", "set_piece", "tactical", "defensiv
 EVENT_METADATA_SCHEMA_VERSION = "1.0"
 
 SET_PIECE_EVENT_TYPES = frozenset(
-    {"set_piece", "kickoff", "throw_in", "corner_kick", "free_kick", "goal_kick"}
+    {"set_piece", "kickoff", "throw_in", "corner_kick", "free_kick", "goal_kick", "penalty"}
 )
-TACTICAL_EVENT_TYPES = frozenset({"build_up", "pressing", "defending", "transition"})
+TACTICAL_EVENT_TYPES = frozenset(
+    {"build_up", "pressing", "counter_press", "defending", "defending_box",
+     "defending_success", "defending_poor_recovery", "transition"}
+)
 
 EVENT_TYPE_TO_FAMILY: dict[str, EventFamily] = {
     "shot": "shot",
+    "shot_on_target": "shot",
+    "shot_off_target": "shot",
     "goal": "goal",
     "pass": "pass",
     "set_piece": "set_piece",
@@ -53,9 +65,14 @@ EVENT_TYPE_TO_FAMILY: dict[str, EventFamily] = {
     "corner_kick": "set_piece",
     "free_kick": "set_piece",
     "goal_kick": "set_piece",
+    "penalty": "set_piece",
     "build_up": "tactical",
     "pressing": "tactical",
+    "counter_press": "tactical",
     "defending": "tactical",
+    "defending_box": "tactical",
+    "defending_success": "tactical",
+    "defending_poor_recovery": "tactical",
     "transition": "tactical",
     "tackle": "defensive",
     "other": "other",
@@ -304,8 +321,14 @@ class EventDetector:
 
                 confidence = (speed_confidence + straightness_confidence) / 2
 
+                # Classify on/off target based on trajectory endpoint
+                # relative to goal region bounds
+                shot_subtype = self._classify_shot_target(
+                    end_point.position, target_goal, start_point.frame_idx,
+                )
+
                 event = Event(
-                    event_type="shot",
+                    event_type=shot_subtype,
                     frame_idx=start_point.frame_idx,
                     timestamp=start_point.timestamp,
                     confidence=confidence,
@@ -314,11 +337,50 @@ class EventDetector:
                         "speed": float(avg_speed),
                         "target_goal": target_goal,
                         "duration_frames": end_idx - start_idx + 1,
+                        "shot_target": shot_subtype,
                     },
                 )
                 events.append(event)
 
         return events
+
+    def _classify_shot_target(
+        self,
+        endpoint: tuple[float, float],
+        target_goal: str | None,
+        frame_idx: int = 0,
+    ) -> EventType:
+        """
+        Classify whether a shot is on or off target.
+
+        On target: ball trajectory endpoint is within or near the goal region
+        horizontally (would have entered the goal frame).
+        Off target: trajectory goes wide or over.
+
+        Returns "shot_on_target", "shot_off_target", or "shot" if undetermined.
+        """
+        if target_goal is None:
+            return "shot"
+
+        regions = self._goal_region_provider.get_goal_regions(frame_idx)
+        for region in regions:
+            if region.name != target_goal:
+                continue
+
+            bounds = region.bounds
+            x_min = bounds.get("x_min", 0)
+            x_max = bounds.get("x_max", self.frame_width)
+            # Expand horizontal bounds by 20% to account for "would have gone in"
+            x_range = x_max - x_min
+            expanded_x_min = x_min - x_range * 0.2
+            expanded_x_max = x_max + x_range * 0.2
+
+            ex, ey = endpoint
+            if expanded_x_min <= ex <= expanded_x_max:
+                return "shot_on_target"
+            return "shot_off_target"
+
+        return "shot"
 
     def detect_goals(
         self,
