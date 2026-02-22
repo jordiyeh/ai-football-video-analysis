@@ -258,8 +258,15 @@ export:
   save_events: true
   save_overlay_video: true
   detections_format: "parquet"  # Options: "parquet", "jsonl", "csv"
-  video_codec: "mp4v"  # FourCC codec
+  video_codec: "mp4v"  # FourCC codec (legacy OpenCV fallback)
   video_fps: null  # If null, use original fps
+  # H.264 compression (reduces overlay from ~37GB to ~4-6GB for a 96-min match)
+  video_crf: 23  # Constant Rate Factor: 0=lossless, 23=good quality, 28=smaller
+  video_preset: "medium"  # Encoding speed: ultrafast/fast/medium/slow/veryslow
+  video_use_ffmpeg: true  # Use ffmpeg pipe for H.264 (falls back to OpenCV if unavailable)
+  # HLS streaming (instant seeking in browser for large overlay videos)
+  video_hls: true  # Split overlay into HLS segments after render
+  video_hls_segment_seconds: 10  # Segment duration in seconds
 
 # ReID (Re-Identification) configuration for player embeddings
 reid:

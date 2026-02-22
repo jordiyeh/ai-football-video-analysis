@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 
 from src.config.schemas import PipelineConfig
-from src.export.overlay import OverlayRenderer, VideoWriter
+from src.export.overlay import FfmpegVideoWriter, OverlayRenderer, VideoWriter, package_hls
 from src.pipeline.base import Pipeline, PipelineCancelledError, PipelineStage, save_detections_to_parquet
 from src.pipeline.contracts import (
     DETECTIONS_SCHEMA_VERSION,
@@ -3240,13 +3240,36 @@ class OverlayStage(PipelineStage):
         metadata = context["video_metadata"]
         output_path = output_dir / "overlay.mp4"
 
-        with VideoReader(video_path) as reader, VideoWriter(
-            output_path=output_path,
-            fps=metadata["fps"],
-            width=metadata["width"],
-            height=metadata["height"],
-            codec=self.config.export.video_codec,
-        ) as writer:
+        # Choose video writer: ffmpeg (compressed H.264) or legacy OpenCV
+        use_ffmpeg = self.config.export.video_use_ffmpeg
+        if use_ffmpeg:
+            try:
+                video_writer = FfmpegVideoWriter(
+                    output_path=output_path,
+                    fps=metadata["fps"],
+                    width=metadata["width"],
+                    height=metadata["height"],
+                    crf=self.config.export.video_crf,
+                    preset=self.config.export.video_preset,
+                )
+                self.console.print(
+                    f"[bold green]Using ffmpeg H.264 encoder (CRF {self.config.export.video_crf}, "
+                    f"preset {self.config.export.video_preset})[/bold green]"
+                )
+            except RuntimeError as exc:
+                self.console.print(f"[yellow]ffmpeg not available ({exc}), falling back to OpenCV[/yellow]")
+                use_ffmpeg = False
+
+        if not use_ffmpeg:
+            video_writer = VideoWriter(
+                output_path=output_path,
+                fps=metadata["fps"],
+                width=metadata["width"],
+                height=metadata["height"],
+                codec=self.config.export.video_codec,
+            )
+
+        with VideoReader(video_path) as reader, video_writer as writer:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -3332,8 +3355,27 @@ class OverlayStage(PipelineStage):
         context["overlay_custom_metrics"] = {
             "output_path": str(output_path),
             "use_tracks": use_tracks,
-            "codec": self.config.export.video_codec,
+            "codec": "libx264" if use_ffmpeg else self.config.export.video_codec,
         }
+
+        # HLS packaging (stream-copy, runs in seconds)
+        if self.config.export.video_hls and output_path.exists():
+            hls_dir = output_dir / "hls"
+            self.console.print("[bold cyan]Packaging HLS segments...[/bold cyan]")
+            playlist = package_hls(
+                mp4_path=output_path,
+                hls_dir=hls_dir,
+                segment_seconds=self.config.export.video_hls_segment_seconds,
+            )
+            if playlist:
+                segments = list(hls_dir.glob("seg_*.m4s"))
+                self.console.print(
+                    f"[bold green]✓ HLS ready: {len(segments)} segments "
+                    f"({self.config.export.video_hls_segment_seconds}s each) -> {hls_dir}[/bold green]"
+                )
+                context["hls_playlist"] = str(playlist)
+            else:
+                self.console.print("[yellow]HLS packaging skipped (ffmpeg unavailable or failed)[/yellow]")
 
         return context
 

@@ -3141,15 +3141,53 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         paths = await loop.run_in_executor(None, _pick_files)
         return {"paths": paths}
 
+    # Metadata for known pipeline configs (estimates for a ~96 min match at 30fps)
+    _CONFIG_METADATA: dict[str, dict[str, Any]] = {
+        "__builtin_default__": {
+            "description": "Basic analysis with default settings",
+            "estimate_time": "~45 min",
+            "estimate_size": "~5 GB overlay",
+        },
+        "default": {
+            "description": "Full pipeline: identity, analytics, highlights, player reels",
+            "estimate_time": "~3\u20134 hrs",
+            "estimate_size": "~6 GB overlay + data",
+        },
+        "ball_specialist": {
+            "description": "Specialist ball detector + ensemble for best ball tracking",
+            "estimate_time": "~3\u20134 hrs",
+            "estimate_size": "~6 GB overlay + data",
+        },
+        "fast_test": {
+            "description": "Every 10th frame, medium model \u2014 quick iteration",
+            "estimate_time": "~20\u201330 min",
+            "estimate_size": "~3 GB overlay",
+        },
+        "improved_detection": {
+            "description": "Aggressive ball detection, every 5th frame",
+            "estimate_time": "~1\u20132 hrs",
+            "estimate_size": "~5 GB overlay + data",
+        },
+        "profile_ingestion.local": {
+            "description": "Matches roster photos to video players via face + body embeddings",
+            "estimate_time": "~3\u20134 hrs",
+            "estimate_size": "~6 GB overlay + data",
+        },
+    }
+
     @app.get("/api/pipeline/configs")
     async def list_pipeline_configs():
         """List available YAML configs for browser-triggered pipeline runs."""
         configs_dir = project_root / "configs"
+        builtin_meta = _CONFIG_METADATA.get("__builtin_default__", {})
         config_items: list[dict[str, Any]] = [
             {
                 "label": "Built-in default",
                 "path": None,
                 "file_name": None,
+                "description": builtin_meta.get("description", ""),
+                "estimate_time": builtin_meta.get("estimate_time", ""),
+                "estimate_size": builtin_meta.get("estimate_size", ""),
             }
         ]
 
@@ -3159,11 +3197,21 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
                     relative_path = config_path.relative_to(project_root).as_posix()
                 except ValueError:
                     relative_path = str(config_path)
+                stem_key = config_path.stem.replace("_", ".")  # e.g. profile_ingestion → profile.ingestion won't match
+                # Try exact stem, then dotted form
+                meta = _CONFIG_METADATA.get(config_path.stem, {})
+                if not meta:
+                    meta = _CONFIG_METADATA.get(
+                        config_path.stem.replace("_", "."), {}
+                    )
                 config_items.append(
                     {
                         "label": config_path.stem.replace("_", " "),
                         "path": relative_path,
                         "file_name": config_path.name,
+                        "description": meta.get("description", ""),
+                        "estimate_time": meta.get("estimate_time", ""),
+                        "estimate_size": meta.get("estimate_size", ""),
                     }
                 )
 
@@ -3996,19 +4044,37 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             return [_sanitize_json_value(item) for item in value]
         return value
 
+    _viz_tracks_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
     def _load_visualization_tracks(run_path: Path) -> list[dict[str, Any]]:
-        """Load tracks.parquet as JSON-safe records for visualization renderers."""
+        """Load tracks.parquet as JSON-safe records for visualization renderers.
+
+        Results are cached keyed on (run_path, mtime) so that switching
+        between visualization types on the same run is fast.
+        """
         import pandas as pd
 
         tracks_path = run_path / "tracks.parquet"
         if not tracks_path.exists():
             raise HTTPException(status_code=404, detail="Tracks not found")
 
+        cache_key = str(tracks_path)
+        mtime = tracks_path.stat().st_mtime
+        cached = _viz_tracks_cache.get(cache_key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
         records = pd.read_parquet(tracks_path).to_dict(orient="records")
-        return [
+        result = [
             {key: _sanitize_json_value(value) for key, value in row.items()}
             for row in records
         ]
+        # Keep only last 2 runs in cache to bound memory
+        if len(_viz_tracks_cache) >= 2 and cache_key not in _viz_tracks_cache:
+            oldest = next(iter(_viz_tracks_cache))
+            del _viz_tracks_cache[oldest]
+        _viz_tracks_cache[cache_key] = (mtime, result)
+        return result
 
     def _load_visualization_events(run_path: Path) -> list[dict[str, Any]]:
         """Load events.jsonl rows for visualization renderers."""
@@ -4968,6 +5034,45 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             video_path,
             media_type="video/mp4",
             headers={"Accept-Ranges": "bytes"},
+        )
+
+    @app.get("/api/runs/{run_name}/hls/{filename:path}")
+    async def get_hls_file(run_name: str, filename: str):
+        """
+        Serve HLS playlist (.m3u8) and segments (.m4s) for streaming playback.
+
+        HLS enables instant seeking on large overlay videos by splitting them
+        into small (~10 second) segments that the browser loads on demand.
+        """
+        run_path = runs_dir / run_name
+        hls_dir = run_path / "hls"
+
+        # Security: prevent path traversal
+        safe_name = Path(filename).name
+        if safe_name != filename or ".." in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+
+        file_path = hls_dir / safe_name
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="HLS file not found")
+
+        # Set correct MIME types
+        if safe_name.endswith(".m3u8"):
+            media_type = "application/vnd.apple.mpegurl"
+        elif safe_name.endswith(".m4s"):
+            media_type = "video/iso.segment"
+        elif safe_name.endswith(".mp4"):
+            media_type = "video/mp4"
+        else:
+            media_type = "application/octet-stream"
+
+        return FileResponse(
+            file_path,
+            media_type=media_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=31536000" if safe_name.endswith(".m4s") else "no-cache",
+            },
         )
 
     @app.get("/api/runs/{run_name}/tracks")

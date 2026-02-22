@@ -96,6 +96,57 @@
             font-size: 0.85rem;
         }
 
+        .config-description {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.7rem;
+            margin-bottom: 0.6rem;
+            font-size: 0.82rem;
+            color: var(--text-muted, #6b7280);
+            background: var(--panel-soft, #f8fafc);
+            border-radius: 6px;
+            border: 1px solid var(--border, #e2e8f0);
+            flex-wrap: wrap;
+        }
+        #configDescText {
+            flex: 1;
+            min-width: 150px;
+        }
+        .config-estimates {
+            display: flex;
+            gap: 0.4rem;
+            flex-shrink: 0;
+        }
+        .config-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .time-badge {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .size-badge {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        [data-theme="dark"] .config-description {
+            background: var(--panel-soft, #1e293b);
+            border-color: var(--border, #334155);
+        }
+        [data-theme="dark"] .time-badge {
+            background: #1e3a5f;
+            color: #93c5fd;
+        }
+        [data-theme="dark"] .size-badge {
+            background: #451a03;
+            color: #fcd34d;
+        }
+
         .pipeline-actions {
             display: flex;
             gap: 0.5rem;
@@ -734,6 +785,56 @@
             margin: 0.65rem 0 0.4rem 0;
             text-transform: uppercase;
             letter-spacing: 0.04em;
+        }
+
+        /* Identity step cards */
+        .identity-step {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.6rem;
+            background: var(--panel-soft);
+            overflow: hidden;
+        }
+        .identity-step-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.55rem 0.7rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .identity-step-header:hover {
+            background: var(--hover, rgba(0,0,0,0.03));
+        }
+        .identity-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--accent, #3b82f6);
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .identity-step-title {
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: var(--text);
+        }
+        .identity-step-hint {
+            flex: 1;
+            font-size: 0.77rem;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .identity-step-body {
+            padding: 0.5rem 0.7rem 0.7rem;
+            border-top: 1px solid var(--border);
         }
 
         .identity-scroll {
@@ -2904,6 +3005,8 @@
     <div class="nav-overlay" id="navOverlay" onclick="toggleNav()"></div>
     <nav class="nav-panel" id="navPanel">
         <h3 style="margin-bottom:1rem;color:var(--accent);">Navigation</h3>
+        <div class="nav-group-label">Pipeline</div>
+        <a class="nav-item" data-view="pipelineStudioView" onclick="showView('pipelineStudioView')">Pipeline Studio</a>
         <div class="nav-group-label">Match Workspace</div>
         <a class="nav-item active" data-view="matchAnalysisView" onclick="showView('matchAnalysisView')">Match Analysis</a>
         <a class="nav-item" data-view="playerReelsView" onclick="showView('playerReelsView')">Player Reels</a>
@@ -2914,8 +3017,8 @@
     </nav>
     
     <div class="container">
-        <!-- ═══ Match Analysis View ═══ -->
-        <div id="matchAnalysisView">
+        <!-- ═══ Pipeline Studio View ═══ -->
+        <div id="pipelineStudioView" style="display:none;">
         <div class="pipeline-studio">
             <div class="pipeline-studio-header">
                 <h2>Pipeline Studio</h2>
@@ -2934,13 +3037,20 @@
                         ></textarea>
                         <button type="button" class="identity-btn" id="browseVideosBtn" onclick="browseVideos()" title="Browse for video files" style="white-space:nowrap;">Browse...</button>
                     </div>
-                    <select id="pipelineConfigPath" class="form-input"></select>
+                    <select id="pipelineConfigPath" class="form-input" onchange="updateConfigDescription()"></select>
                     <input
                         id="pipelineRunPrefix"
                         type="text"
                         class="form-input"
                         placeholder="Run name or prefix (optional)"
                     >
+                </div>
+                <div id="configDescription" class="config-description" style="display:none;">
+                    <span id="configDescText"></span>
+                    <span class="config-estimates">
+                        <span id="configEstTime" class="config-badge time-badge"></span>
+                        <span id="configEstSize" class="config-badge size-badge"></span>
+                    </span>
                 </div>
                 <div class="pipeline-team-selectors" id="pipelineTeamSelectors">
                     <div class="pipeline-team-row">
@@ -2985,7 +3095,10 @@
                 <p class="loading">Loading pipeline jobs...</p>
             </div>
         </div>
+        </div>
 
+        <!-- ═══ Match Analysis View ═══ -->
+        <div id="matchAnalysisView">
         <div class="runs-list" id="runsList">
             <h2>Analysis Runs</h2>
             <div class="runs-header-controls">
@@ -3120,6 +3233,7 @@
                     <button class="filter-btn" data-filter="rejected" onclick="setEventFilter('rejected')" aria-label="Show rejected events">Rejected <span class="filter-count" id="filterCountRejected">0</span></button>
                 </div>
                 <div id="eventsList"></div>
+                </div>
 
                 <div class="tags-section" id="matchTagsSection">
                     <div class="tags-header">
@@ -3198,7 +3312,6 @@
                         <p class="loading">Select a run to load tags</p>
                     </div>
                 </div>
-                </div>
 
                 <div class="team-analytics-section" id="matchAnalyticsSection">
                     <div class="collapsible-header" onclick="toggleCollapsible('analytics')">
@@ -3233,6 +3346,7 @@
                                     <option value="momentum">Momentum Graph</option>
                                     <option value="pass_strings">Pass Strings</option>
                                     <option value="radial_chart">Radial Chart</option>
+                                    <option value="progress_chart">Progress Chart</option>
                                 </select>
                                 <select id="visualizationTeamFilter" class="form-input" onchange="onVisualizationControlsChanged()">
                                     <option value="">Team: All</option>
@@ -3438,104 +3552,150 @@
                 <div class="identity-section" id="identityReviewSection">
                     <div class="player-reels-header">
                         <div class="collapsible-header" onclick="toggleCollapsible('identity')">
-                            <h3>Identity Review</h3>
+                            <h3>Player Identification</h3>
                             <span class="collapsible-chevron" id="chevron-identity">&#9660;</span>
                         </div>
                         <span class="panel-note" id="identitySummary">No identity data loaded</span>
                     </div>
-                    <div class="panel-note" style="margin-bottom:0.55rem;">Identity assignments here apply to this selected match run.</div>
+                    <div class="panel-note" style="margin-bottom:0.55rem;">Match video tracks to real players on your roster. Changes apply to this match run.</div>
 
                     <div id="collapsible-identity">
-                    <div class="identity-controls">
-                        <button class="identity-btn" onclick="refreshIdentityReview()">Refresh</button>
-                        <button class="identity-btn" onclick="previewRecomputeDiff()">Preview Recompute Diff</button>
-                        <button class="identity-btn" onclick="approvePreviewAndPersist()">Approve Preview -> Persist</button>
-                        <button class="identity-btn" onclick="undoLastIdentityEdit()">Undo Last Edit</button>
-                        <button class="identity-btn primary" onclick="recomputePlayerReelsFromIdentity()">Recompute Reels</button>
-                    </div>
                     <div id="identityStatus" class="identity-status"></div>
-                    <div id="recomputePreview" class="identity-preview">Preview diff not generated yet</div>
-                    <div class="identity-subheader">Identity Suggestions</div>
-                    <div class="identity-suggestion-controls">
-                        <div id="suggestionsSelectedCount" class="identity-selected-count">0 selected</div>
-                        <input
-                            id="suggestionMinConfidence"
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value="0.7"
-                            class="form-input"
-                            placeholder="Min confidence"
-                        >
-                        <label class="identity-toggle">
-                            <input id="preserveExistingClips" type="checkbox" checked>
-                            Preserve existing clips
-                        </label>
-                        <button class="identity-btn" onclick="loadIdentitySuggestions(currentRun)">Refresh Suggestions</button>
-                        <button class="identity-btn" onclick="selectAllPendingSuggestions()">Select Pending</button>
-                        <button class="identity-btn" onclick="clearSelectedSuggestions()">Clear</button>
-                        <button class="identity-btn primary" onclick="applySelectedSuggestions()">Apply Selected</button>
-                        <button class="identity-btn" onclick="applySuggestionsAndPreview()">Apply + Preview Diff</button>
-                        <button class="identity-btn primary" onclick="applySuggestionsAndRecompute()">Apply + Recompute</button>
-                    </div>
-                    <div id="identitySuggestionsList" class="identity-scroll">
-                        <p class="loading">No suggestions loaded</p>
-                    </div>
-                    <div id="identityEditsList" class="identity-edits">
-                        <p class="loading">No edit history loaded</p>
-                    </div>
 
-                    <div class="identity-subheader">Create Player (Split)</div>
-                    <div class="identity-inline-form">
-                        <input id="newPlayerName" type="text" class="form-input" placeholder="Player name">
-                        <input id="newPlayerJersey" type="number" class="form-input" placeholder="Jersey #">
-                        <select id="newPlayerTeam" class="form-input">
-                            <option value="">Team: Unknown</option>
-                            <option value="ours">Ours</option>
-                            <option value="opponent">Opponent</option>
-                        </select>
-                        <button class="identity-btn" onclick="createPlayerFromForm()">Add Player</button>
-                    </div>
-
-                    <div class="identity-subheader">Merge Players</div>
-                    <div class="identity-inline-form" style="grid-template-columns: 1fr 1fr auto;">
-                        <select id="mergeKeepPlayer" class="form-input"></select>
-                        <select id="mergeFromPlayer" class="form-input"></select>
-                        <button class="identity-btn" onclick="mergePlayersFromForm()">Merge</button>
-                    </div>
-
-                    <div class="identity-subheader">Player Metadata</div>
-                    <div id="identityPlayersList" class="identity-scroll">
-                        <p class="loading">Select a run to load players</p>
-                    </div>
-
-                    <div class="identity-subheader" style="display:flex;justify-content:space-between;align-items:center;">
-                        <span>Track Assignments</span>
-                        <div style="display:flex;gap:0.4rem;">
-                            <button class="section-export-btn" onclick="exportSectionJSON(identityReviewData.assignments, 'track_assignments.json')" title="Export assignments as JSON">JSON</button>
-                            <button class="section-export-btn" onclick="exportSectionCSV(identityReviewData.assignments, ['track_id','player_id','player_name','match_method','match_confidence','frame_start','frame_end'], 'track_assignments.csv')" title="Export assignments as CSV">CSV</button>
+                    <!-- Step 1: AI Suggestions -->
+                    <div class="identity-step">
+                        <div class="identity-step-header" onclick="toggleIdentityStep('suggestions')">
+                            <span class="identity-step-number">1</span>
+                            <span class="identity-step-title">AI Suggestions</span>
+                            <span class="identity-step-hint">Auto-detected player matches from face, body, and jersey recognition</span>
+                            <span class="collapsible-chevron" id="chevron-id-suggestions">&#9660;</span>
+                        </div>
+                        <div id="collapsible-id-suggestions" class="identity-step-body">
+                            <div class="identity-suggestion-controls">
+                                <div id="suggestionsSelectedCount" class="identity-selected-count">0 selected</div>
+                                <input
+                                    id="suggestionMinConfidence"
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value="0.7"
+                                    class="form-input"
+                                    placeholder="Min confidence"
+                                    title="Minimum confidence to show suggestions"
+                                >
+                                <label class="identity-toggle">
+                                    <input id="preserveExistingClips" type="checkbox" checked>
+                                    Preserve existing clips
+                                </label>
+                                <button class="identity-btn" onclick="loadIdentitySuggestions(currentRun)">Refresh</button>
+                                <button class="identity-btn" onclick="selectAllPendingSuggestions()">Select Pending</button>
+                                <button class="identity-btn" onclick="clearSelectedSuggestions()">Clear</button>
+                                <button class="identity-btn primary" onclick="applySelectedSuggestions()">Accept Selected</button>
+                                <button class="identity-btn" onclick="applySuggestionsAndPreview()">Accept + Preview</button>
+                                <button class="identity-btn primary" onclick="applySuggestionsAndRecompute()">Accept + Rebuild Reels</button>
+                            </div>
+                            <div id="identitySuggestionsList" class="identity-scroll">
+                                <p class="loading">No suggestions loaded</p>
+                            </div>
                         </div>
                     </div>
-                    <input
-                        id="assignmentSearch"
-                        type="text"
-                        class="form-input identity-search"
-                        placeholder="Filter assignments by track id or player name"
-                        oninput="updateAssignmentFilter()"
-                    >
-                    <div class="identity-bulk-controls">
-                        <div id="bulkSelectedCount" class="identity-selected-count">0 selected</div>
-                        <select id="bulkAssignPlayer" class="form-input">
-                            <option value="">Assign selected to...</option>
-                        </select>
-                        <button class="identity-btn" onclick="selectAllFilteredAssignments()">Select Filtered</button>
-                        <button class="identity-btn" onclick="clearSelectedAssignments()">Clear</button>
-                        <button class="identity-btn primary" onclick="applyBulkAssignment()">Apply</button>
+
+                    <!-- Step 2: Player Assignments -->
+                    <div class="identity-step">
+                        <div class="identity-step-header" onclick="toggleIdentityStep('assignments')">
+                            <span class="identity-step-number">2</span>
+                            <span class="identity-step-title">Player Assignments</span>
+                            <span class="identity-step-hint">Each track is a person detected in video. Assign tracks to known players.</span>
+                            <span class="collapsible-chevron" id="chevron-id-assignments">&#9660;</span>
+                        </div>
+                        <div id="collapsible-id-assignments" class="identity-step-body">
+                            <div class="identity-subheader" style="display:flex;justify-content:space-between;align-items:center;">
+                                <span>All Assignments</span>
+                                <div style="display:flex;gap:0.4rem;">
+                                    <button class="section-export-btn" onclick="exportSectionJSON(identityReviewData.assignments, 'track_assignments.json')" title="Export assignments as JSON">JSON</button>
+                                    <button class="section-export-btn" onclick="exportSectionCSV(identityReviewData.assignments, ['track_id','player_id','player_name','match_method','match_confidence','frame_start','frame_end'], 'track_assignments.csv')" title="Export assignments as CSV">CSV</button>
+                                </div>
+                            </div>
+                            <input
+                                id="assignmentSearch"
+                                type="text"
+                                class="form-input identity-search"
+                                placeholder="Search by track ID or player name..."
+                                oninput="updateAssignmentFilter()"
+                            >
+                            <div class="identity-bulk-controls">
+                                <div id="bulkSelectedCount" class="identity-selected-count">0 selected</div>
+                                <select id="bulkAssignPlayer" class="form-input">
+                                    <option value="">Assign selected to...</option>
+                                </select>
+                                <button class="identity-btn" onclick="selectAllFilteredAssignments()">Select Filtered</button>
+                                <button class="identity-btn" onclick="clearSelectedAssignments()">Clear</button>
+                                <button class="identity-btn primary" onclick="applyBulkAssignment()">Apply</button>
+                            </div>
+                            <div id="identityAssignmentsList" class="identity-scroll">
+                                <p class="loading">Select a run to load assignments</p>
+                            </div>
+                        </div>
                     </div>
-                    <div id="identityAssignmentsList" class="identity-scroll">
-                        <p class="loading">Select a run to load assignments</p>
+
+                    <!-- Step 3: Advanced Tools -->
+                    <div class="identity-step">
+                        <div class="identity-step-header" onclick="toggleIdentityStep('tools')">
+                            <span class="identity-step-number">3</span>
+                            <span class="identity-step-title">Advanced Tools</span>
+                            <span class="identity-step-hint">Add/merge players, preview changes, rebuild reels</span>
+                            <span class="collapsible-chevron" id="chevron-id-tools">&#9654;</span>
+                        </div>
+                        <div id="collapsible-id-tools" class="identity-step-body" style="display:none;">
+                            <div class="identity-controls">
+                                <button class="identity-btn" onclick="refreshIdentityReview()">Refresh Data</button>
+                                <button class="identity-btn" onclick="previewRecomputeDiff()">Preview Changes</button>
+                                <button class="identity-btn" onclick="approvePreviewAndPersist()">Apply Changes</button>
+                                <button class="identity-btn" onclick="undoLastIdentityEdit()">Undo Last Change</button>
+                                <button class="identity-btn primary" onclick="recomputePlayerReelsFromIdentity()">Rebuild Highlight Reels</button>
+                            </div>
+                            <div id="recomputePreview" class="identity-preview">No changes preview yet</div>
+                            <div id="identityEditsList" class="identity-edits">
+                                <p class="loading">No edit history loaded</p>
+                            </div>
+
+                            <div class="identity-subheader">Add New Player</div>
+                            <div class="identity-inline-form">
+                                <input id="newPlayerName" type="text" class="form-input" placeholder="Player name">
+                                <input id="newPlayerJersey" type="number" class="form-input" placeholder="Jersey #">
+                                <select id="newPlayerTeam" class="form-input">
+                                    <option value="">Team: Unknown</option>
+                                    <option value="ours">Ours</option>
+                                    <option value="opponent">Opponent</option>
+                                </select>
+                                <button class="identity-btn" onclick="createPlayerFromForm()">Add Player</button>
+                            </div>
+
+                            <div class="identity-subheader">Merge Duplicate Players</div>
+                            <div class="identity-inline-form" style="grid-template-columns: 1fr 1fr auto;">
+                                <select id="mergeKeepPlayer" class="form-input"></select>
+                                <select id="mergeFromPlayer" class="form-input"></select>
+                                <button class="identity-btn" onclick="mergePlayersFromForm()">Merge</button>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Step 4: Player Roster -->
+                    <div class="identity-step">
+                        <div class="identity-step-header" onclick="toggleIdentityStep('roster')">
+                            <span class="identity-step-number">4</span>
+                            <span class="identity-step-title">Player Roster</span>
+                            <span class="identity-step-hint">Known players in the identity database</span>
+                            <span class="collapsible-chevron" id="chevron-id-roster">&#9654;</span>
+                        </div>
+                        <div id="collapsible-id-roster" class="identity-step-body" style="display:none;">
+                            <div id="identityPlayersList" class="identity-scroll">
+                                <p class="loading">Select a run to load players</p>
+                            </div>
+                        </div>
+                    </div>
+
                     </div>
                 </div>
             </div>
@@ -3644,9 +3804,9 @@
                 <button class="identity-btn primary" onclick="showCreatePlayerForm()">+ Add Player</button>
             </div>
             <div id="createPlayerForm" class="team-create-form" style="display:none;">
-                <input id="newPlayerName" type="text" class="form-input" placeholder="Name" style="flex:1;">
+                <input id="mgrPlayerName" type="text" class="form-input" placeholder="Name" style="flex:1;">
                 <input id="newPlayerNumber" type="number" class="form-input" placeholder="#" style="width:3.5rem;">
-                <select id="newPlayerTeam" class="form-input" style="width:140px;">
+                <select id="mgrPlayerTeam" class="form-input" style="width:140px;">
                     <option value="">No team</option>
                 </select>
                 <select id="newPlayerHint" class="form-input" style="width:120px;">
@@ -3685,6 +3845,8 @@
         </div>
     </div>
 
+    <!-- HLS.js for streaming large overlay videos (instant seeking) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.18/dist/hls.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
