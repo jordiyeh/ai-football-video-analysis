@@ -9,15 +9,18 @@ import os
 import math
 import traceback
 import threading
+import shutil
+import subprocess
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
@@ -122,6 +125,11 @@ class QueuePipelineJobsBody(BaseModel):
     away_team_id: int | None = None
     home_kit: str = "home"
     away_kit: str = "home"
+
+
+class DownloadYouTubeBody(BaseModel):
+    """Request body for downloading one YouTube video URL into uploads/."""
+    url: str
 
 
 class CreateTeamBody(BaseModel):
@@ -369,6 +377,19 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         if not candidate.is_absolute():
             candidate = project_root / candidate
         return candidate.resolve()
+
+    def is_youtube_url(raw_url: str) -> bool:
+        """Return True when URL points to YouTube domains."""
+        try:
+            parsed = urlparse(str(raw_url).strip())
+        except Exception:
+            return False
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        host = parsed.netloc.lower().split(":", 1)[0]
+        if host.startswith("www."):
+            host = host[4:]
+        return host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com")
 
     def _serialize_pipeline_job_for_storage(job: dict[str, Any]) -> dict[str, Any]:
         """Normalize one pipeline job for JSON storage."""
@@ -1206,6 +1227,182 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         if not run_path.exists():
             raise HTTPException(status_code=404, detail="Run not found")
         return run_path
+
+    track_thumbnail_cache: dict[tuple[str, int], bytes] = {}
+    track_thumbnail_cache_lock = threading.Lock()
+
+    def _parse_bbox(raw_bbox: Any) -> tuple[float, float, float, float] | None:
+        """Parse bbox payloads in common formats and validate extent."""
+        x1: float | None = None
+        y1: float | None = None
+        x2: float | None = None
+        y2: float | None = None
+
+        if isinstance(raw_bbox, list | tuple) and len(raw_bbox) >= 4:
+            try:
+                x1 = float(raw_bbox[0])
+                y1 = float(raw_bbox[1])
+                x2 = float(raw_bbox[2])
+                y2 = float(raw_bbox[3])
+            except (TypeError, ValueError):
+                return None
+        elif isinstance(raw_bbox, dict):
+            try:
+                x1 = float(raw_bbox.get("x1"))
+                y1 = float(raw_bbox.get("y1"))
+                x2 = float(raw_bbox.get("x2"))
+                y2 = float(raw_bbox.get("y2"))
+            except (TypeError, ValueError):
+                return None
+
+        if x1 is None or y1 is None or x2 is None or y2 is None:
+            return None
+        if not math.isfinite(x1) or not math.isfinite(y1) or not math.isfinite(x2) or not math.isfinite(y2):
+            return None
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return x1, y1, x2, y2
+
+    def _extract_bbox_from_row(row: dict[str, Any]) -> tuple[float, float, float, float] | None:
+        """Extract bbox from assignment/tracks/detections rows."""
+        bbox = _parse_bbox(row.get("bbox"))
+        if bbox is not None:
+            return bbox
+
+        if all(key in row for key in ("x1", "y1", "x2", "y2")):
+            return _parse_bbox({
+                "x1": row.get("x1"),
+                "y1": row.get("y1"),
+                "x2": row.get("x2"),
+                "y2": row.get("y2"),
+            })
+
+        if all(key in row for key in ("left", "top", "width", "height")):
+            try:
+                left = float(row.get("left"))
+                top = float(row.get("top"))
+                width = float(row.get("width"))
+                height = float(row.get("height"))
+            except (TypeError, ValueError):
+                return None
+            return _parse_bbox({
+                "x1": left,
+                "y1": top,
+                "x2": left + width,
+                "y2": top + height,
+            })
+
+        return None
+
+    def _load_bbox_from_parquet(
+        parquet_path: Path,
+        track_id: int,
+        frame_start: int | None,
+    ) -> tuple[float, float, float, float] | None:
+        """Find the closest available bbox for a track from parquet artifacts."""
+        if not parquet_path.exists():
+            return None
+
+        try:
+            import pandas as pd
+        except ImportError:
+            return None
+
+        try:
+            records = pd.read_parquet(parquet_path).to_dict(orient="records")
+        except Exception:
+            return None
+
+        best_bbox: tuple[float, float, float, float] | None = None
+        best_distance: int | None = None
+
+        for row in records:
+            if not isinstance(row, dict):
+                continue
+            row_track_id = _coerce_int(row.get("track_id"))
+            if row_track_id != track_id:
+                continue
+
+            bbox = _extract_bbox_from_row(row)
+            if bbox is None:
+                continue
+
+            if frame_start is None:
+                return bbox
+
+            row_frame = _coerce_int(row.get("frame_idx"))
+            if row_frame is None:
+                if best_bbox is None:
+                    best_bbox = bbox
+                continue
+
+            distance = abs(row_frame - frame_start)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best_bbox = bbox
+                if distance == 0:
+                    return bbox
+
+        return best_bbox
+
+    def _resolve_run_source_video_path(run_path: Path) -> Path | None:
+        """Resolve the best source video candidate for thumbnail extraction."""
+        candidates: list[Path] = []
+
+        manifest_path = run_path / "run_manifest.json"
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                manifest = {}
+
+            if isinstance(manifest, dict):
+                for key in ("original_video_path", "video_path"):
+                    value = manifest.get(key)
+                    if isinstance(value, str) and value.strip():
+                        candidates.append(Path(value.strip()).expanduser())
+
+                source = manifest.get("source")
+                if isinstance(source, dict):
+                    source_video = source.get("video_path")
+                    if isinstance(source_video, str) and source_video.strip():
+                        candidates.append(Path(source_video.strip()).expanduser())
+
+        overlay_path = run_path / "overlay.mp4"
+        if overlay_path.exists():
+            candidates.append(overlay_path)
+
+        for candidate in candidates:
+            if candidate.is_absolute():
+                resolved = candidate
+            else:
+                run_relative = (run_path / candidate).resolve()
+                if run_relative.exists() and run_relative.is_file():
+                    return run_relative
+                resolved = (project_root / candidate).resolve()
+
+            if resolved.exists() and resolved.is_file():
+                return resolved
+
+        return None
+
+    def _clamp_bbox_to_frame(
+        bbox: tuple[float, float, float, float],
+        frame_width: int,
+        frame_height: int,
+    ) -> tuple[int, int, int, int] | None:
+        """Clamp bbox to frame boundaries and return integer crop coordinates."""
+        if frame_width <= 0 or frame_height <= 0:
+            return None
+
+        x1 = max(0, min(frame_width - 1, int(math.floor(bbox[0]))))
+        y1 = max(0, min(frame_height - 1, int(math.floor(bbox[1]))))
+        x2 = max(0, min(frame_width, int(math.ceil(bbox[2]))))
+        y2 = max(0, min(frame_height, int(math.ceil(bbox[3]))))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return x1, y1, x2, y2
 
     def _normalize_required_tag_text(value: str, field_name: str) -> str:
         """Trim and validate required tag fields."""
@@ -2266,6 +2463,8 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
             suggestions.append(
                 {
                     "track_id": track_id,
+                    "frame_start": _coerce_int(row.get("frame_start")),
+                    "frame_end": _coerce_int(row.get("frame_end")),
                     "recommended": {
                         "player_id": recommended_player_id,
                         "confidence": recommended_confidence,
@@ -3140,6 +3339,151 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
         loop = asyncio.get_event_loop()
         paths = await loop.run_in_executor(None, _pick_files)
         return {"paths": paths}
+
+    @app.post("/api/upload-video")
+    async def upload_video(file: UploadFile = File(...)):
+        """Upload one video file into project-local uploads/ and return its relative path."""
+        uploads_dir = project_root / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        raw_name = Path(file.filename or "video.mp4").name
+        base_stem = _sanitize_run_component(Path(raw_name).stem) or "video"
+        suffix = Path(raw_name).suffix.lower()
+        if not suffix:
+            suffix = ".mp4"
+
+        allowed_suffixes = {
+            ".mp4",
+            ".mov",
+            ".m4v",
+            ".avi",
+            ".mkv",
+            ".webm",
+            ".mpeg",
+            ".mpg",
+            ".3gp",
+        }
+        if suffix not in allowed_suffixes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported video extension: {suffix}",
+            )
+
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        unique_name = (
+            f"{base_stem}_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{uuid4().hex[:8]}{suffix}"
+        )
+        dest = uploads_dir / unique_name
+        dest.write_bytes(content)
+
+        return {
+            "success": True,
+            "path": dest.relative_to(project_root).as_posix(),
+            "filename": unique_name,
+            "size_bytes": len(content),
+        }
+
+    @app.post("/api/download-youtube")
+    async def download_youtube_video(body: DownloadYouTubeBody):
+        """Download one YouTube URL into uploads/ and return queue-ready local path."""
+        raw_url = str(body.url or "").strip()
+        if not raw_url:
+            raise HTTPException(status_code=400, detail="url is required")
+        if not is_youtube_url(raw_url):
+            raise HTTPException(
+                status_code=400,
+                detail="Only youtube.com and youtu.be URLs are supported",
+            )
+
+        yt_dlp_path = shutil.which("yt-dlp")
+        if not yt_dlp_path:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "yt-dlp is not installed. Install it with `brew install yt-dlp` "
+                    "(or `pipx install yt-dlp`) and retry."
+                ),
+            )
+
+        uploads_dir = project_root / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        output_template = str((uploads_dir / "%(title).80s_%(id)s.%(ext)s").resolve())
+
+        cmd = [
+            yt_dlp_path,
+            "--no-playlist",
+            "--restrict-filenames",
+            "--no-progress",
+            "--quiet",
+            "--format",
+            "mp4/best[ext=mp4]/best",
+            "--merge-output-format",
+            "mp4",
+            "--output",
+            output_template,
+            "--print",
+            "after_move:filepath",
+            raw_url,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(project_root),
+                timeout=20 * 60,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="Timed out while downloading YouTube video",
+            ) from exc
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to execute yt-dlp: {exc}",
+            ) from exc
+
+        if result.returncode != 0:
+            error_detail = (result.stderr or result.stdout or "unknown yt-dlp error").strip()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to download YouTube video: {error_detail[:500]}",
+            )
+
+        downloaded_path: Path | None = None
+        for line in reversed((result.stdout or "").splitlines()):
+            candidate_raw = line.strip()
+            if not candidate_raw:
+                continue
+            candidate = Path(candidate_raw)
+            if not candidate.is_absolute():
+                candidate = (project_root / candidate).resolve()
+            if candidate.exists() and candidate.is_file():
+                downloaded_path = candidate
+                break
+
+        if downloaded_path is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Download finished but output file path could not be resolved",
+            )
+
+        try:
+            relative_path = downloaded_path.relative_to(project_root).as_posix()
+        except ValueError:
+            relative_path = str(downloaded_path)
+
+        return {
+            "success": True,
+            "path": relative_path,
+            "filename": downloaded_path.name,
+            "source_url": raw_url,
+        }
 
     # Metadata for known pipeline configs (estimates for a ~96 min match at 30fps)
     _CONFIG_METADATA: dict[str, dict[str, Any]] = {
@@ -5074,6 +5418,99 @@ def create_app(runs_dir: Path = Path("runs")) -> FastAPI:
                 "Cache-Control": "public, max-age=31536000" if safe_name.endswith(".m4s") else "no-cache",
             },
         )
+
+    @app.get("/api/runs/{run_name}/tracks/{track_id}/thumbnail")
+    async def get_track_thumbnail(run_name: str, track_id: int):
+        """Return a cached per-track thumbnail crop from the first tracked frame."""
+        run_path = ensure_run_exists(run_name)
+        cache_key = (run_name, int(track_id))
+
+        with track_thumbnail_cache_lock:
+            cached = track_thumbnail_cache.get(cache_key)
+        if cached is not None:
+            return Response(content=cached, media_type="image/jpeg")
+
+        assignments_path = run_path / "player_assignments.json"
+        if not assignments_path.exists():
+            raise HTTPException(status_code=404, detail="player_assignments.json not found")
+
+        try:
+            with open(assignments_path) as f:
+                assignments_data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            raise HTTPException(status_code=404, detail="player_assignments.json unreadable")
+
+        assignment_row: dict[str, Any] | None = None
+        for row in assignments_data.get("assignments", []):
+            if not isinstance(row, dict):
+                continue
+            if _coerce_int(row.get("track_id")) == track_id:
+                assignment_row = row
+                break
+
+        if assignment_row is None:
+            raise HTTPException(status_code=404, detail="Track assignment not found")
+
+        frame_start = _coerce_int(assignment_row.get("frame_start"))
+        if frame_start is None:
+            raise HTTPException(status_code=404, detail="Track frame_start not found")
+
+        bbox = _extract_bbox_from_row(assignment_row)
+        if bbox is None:
+            bbox = _load_bbox_from_parquet(run_path / "detections.parquet", track_id, frame_start)
+        if bbox is None:
+            bbox = _load_bbox_from_parquet(run_path / "tracks.parquet", track_id, frame_start)
+        if bbox is None:
+            raise HTTPException(status_code=404, detail="Track bbox not found")
+
+        video_path = _resolve_run_source_video_path(run_path)
+        if video_path is None:
+            raise HTTPException(status_code=404, detail="Source video not found")
+
+        try:
+            import cv2
+        except ImportError:
+            raise HTTPException(status_code=500, detail="OpenCV not available")
+
+        capture = cv2.VideoCapture(str(video_path))
+        if not capture.isOpened():
+            capture.release()
+            raise HTTPException(status_code=404, detail="Failed to open source video")
+
+        try:
+            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_start)
+            ok, frame = capture.read()
+        finally:
+            capture.release()
+
+        if not ok or frame is None:
+            raise HTTPException(status_code=404, detail="Failed to read source frame")
+
+        frame_height, frame_width = frame.shape[:2]
+        clamped_bbox = _clamp_bbox_to_frame(bbox, frame_width, frame_height)
+        if clamped_bbox is None:
+            raise HTTPException(status_code=404, detail="Track bbox outside frame")
+
+        x1, y1, x2, y2 = clamped_bbox
+        crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            raise HTTPException(status_code=404, detail="Empty crop for track bbox")
+
+        crop_height, crop_width = crop.shape[:2]
+        if crop_height > 96:
+            scale = 96.0 / float(crop_height)
+            new_width = max(1, int(round(crop_width * scale)))
+            crop = cv2.resize(crop, (new_width, 96))
+
+        encoded_ok, encoded = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        if not encoded_ok:
+            raise HTTPException(status_code=404, detail="Failed to encode thumbnail")
+
+        payload = encoded.tobytes()
+        with track_thumbnail_cache_lock:
+            track_thumbnail_cache[cache_key] = payload
+
+        return Response(content=payload, media_type="image/jpeg")
 
     @app.get("/api/runs/{run_name}/tracks")
     async def get_tracks(run_name: str, frame_start: int = None, frame_end: int = None):

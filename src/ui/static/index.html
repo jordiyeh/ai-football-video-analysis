@@ -863,7 +863,7 @@
         }
 
         .identity-assignment-row {
-            grid-template-columns: 0.35fr 0.8fr 0.9fr 1.5fr 1fr auto;
+            grid-template-columns: auto minmax(0, 1fr) minmax(140px, 1fr) auto auto;
         }
 
         .identity-id {
@@ -940,7 +940,7 @@
 
         .identity-suggestion-row {
             display: grid;
-            grid-template-columns: 0.35fr 0.8fr 1.1fr 1.4fr;
+            grid-template-columns: auto minmax(0, 1fr) auto;
             gap: 0.4rem;
             align-items: center;
             background: var(--panel);
@@ -1018,6 +1018,31 @@
             transform: scale(1.05);
             accent-color: var(--accent);
             cursor: pointer;
+        }
+
+        .identity-row-main {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .identity-row-text {
+            min-width: 0;
+        }
+
+        .track-thumb {
+            width: 48px;
+            height: 64px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-right: 8px;
+            background: #333;
+            flex-shrink: 0;
+        }
+
+        .identity-jump-btn {
+            min-width: 34px;
+            padding: 0.35rem 0.45rem;
         }
         
         .event-item {
@@ -2589,6 +2614,76 @@
             }
         }
 
+        @media (max-width: 768px) {
+            .header {
+                padding: 0.75rem 1rem;
+                gap: 0.6rem;
+            }
+
+            .header h1 {
+                font-size: 1.1rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .pipeline-studio,
+            .video-section,
+            .events-panel {
+                padding: 1rem;
+            }
+
+            .pipeline-upload-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .pipeline-upload-controls .identity-btn {
+                width: 100%;
+                min-height: 44px;
+            }
+
+            .identity-btn,
+            .playback-btn,
+            .speed-btn,
+            .fullscreen-btn,
+            .toggle-btn,
+            .theme-toggle,
+            .section-export-btn {
+                min-height: 44px;
+                touch-action: manipulation;
+            }
+
+            .playback-controls {
+                gap: 0.35rem;
+            }
+
+            .playback-time {
+                width: 100%;
+                margin-left: 0;
+                text-align: center;
+            }
+
+            .speedrun-status {
+                order: 20;
+                width: 100%;
+                text-align: center;
+            }
+
+            .modal-content {
+                width: min(94vw, 460px);
+                margin: 8vh auto;
+                max-height: 84vh;
+                overflow-y: auto;
+            }
+
+            .clip-modal-content {
+                width: min(95vw, 900px);
+                margin: 4vh auto;
+            }
+        }
+
         /* ── Burger menu & navigation ── */
         .burger-btn {
             background: none;
@@ -2968,6 +3063,12 @@
             min-width: 150px;
         }
 
+        .pipeline-upload-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-start;
+        }
+
         /* ── Team mapping bar (run viewer) ── */
         .team-mapping-bar {
             display: flex;
@@ -3026,16 +3127,25 @@
             </div>
             <form onsubmit="submitPipelineJobs(event)">
                 <div class="pipeline-grid">
-                    <div style="display:flex;gap:0.5rem;align-items:start;">
+                    <div class="pipeline-upload-controls">
                         <textarea
                             id="pipelineVideoPaths"
                             class="form-input"
                             rows="3"
                             placeholder="Video paths (one per line), e.g.&#10;match.mp4&#10;/Users/.../week2.mp4"
-                            required
                             style="flex:1;"
                         ></textarea>
-                        <button type="button" class="identity-btn" id="browseVideosBtn" onclick="browseVideos()" title="Browse for video files" style="white-space:nowrap;">Browse...</button>
+                        <div style="display:flex;flex-direction:column;gap:0.5rem;min-width:132px;">
+                            <input
+                                id="pipelineVideoUploadInput"
+                                type="file"
+                                accept="video/*,.mp4,.mov,.m4v,.webm"
+                                multiple
+                                style="display:none;"
+                            >
+                            <button type="button" class="identity-btn" id="uploadVideosBtn" onclick="triggerVideoUploadPicker()" title="Upload videos from this device" style="white-space:nowrap;">Upload...</button>
+                            <button type="button" class="identity-btn" id="browseVideosBtn" onclick="browseVideos()" title="Browse for video files" style="white-space:nowrap;">Browse...</button>
+                        </div>
                     </div>
                     <select id="pipelineConfigPath" class="form-input" onchange="updateConfigDescription()"></select>
                     <input
@@ -3119,7 +3229,7 @@
                 <div id="runSummaryBar">
                 </div>
                 <div class="video-container" id="videoContainer">
-                    <video id="videoPlayer" controls>
+                    <video id="videoPlayer" controls playsinline webkit-playsinline preload="metadata">
                         <source id="videoSource" src="" type="video/mp4">
                         Your browser does not support the video tag.
                     </video>
