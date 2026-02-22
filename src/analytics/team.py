@@ -790,6 +790,18 @@ def build_team_analytics(
             current_segment["duration_seconds"] = segment_frames / fps
             possession_segments.append(current_segment)
 
+    # Possession won: count transitions where a team gains possession
+    possession_won_counter: Counter[str] = Counter()
+    prev_team: str | None = None
+    for row in possession_timeline:
+        current_team = row.get("owner_team", UNKNOWN_TEAM)
+        if current_team == UNKNOWN_TEAM:
+            prev_team = None
+            continue
+        if prev_team is not None and prev_team != current_team and prev_team != UNKNOWN_TEAM:
+            possession_won_counter[current_team] += 1
+        prev_team = current_team
+
     possession_by_minute = _build_possession_by_minute(
         possession_timeline=possession_timeline,
         team_labels=possession_team_labels,
@@ -1150,6 +1162,12 @@ def build_team_analytics(
         "territory_samples": territory_summary["samples"],
     }
 
+    # Possession minutes (absolute time, not just %)
+    possession_minutes_by_team: dict[str, float] = {}
+    for team in possession_team_labels:
+        team_seconds = float(possession_by_team.get(team, {}).get("seconds", 0.0))
+        possession_minutes_by_team[team] = team_seconds / 60.0
+
     possession_summary = {
         "frames_with_ball": frames_with_ball,
         "frames_with_possession": frames_with_possession,
@@ -1161,6 +1179,11 @@ def build_team_analytics(
         "minute_bucket_seconds": possession_minute_bucket_seconds,
         "by_minute": possession_by_minute,
         "by_phase": possession_by_phase,
+        "possession_won": {
+            team: int(possession_won_counter.get(team, 0))
+            for team in possession_team_labels
+        },
+        "possession_minutes": possession_minutes_by_team,
     }
 
     return {

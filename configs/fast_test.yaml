@@ -49,6 +49,8 @@ export:
   detections_format: "parquet"
   video_codec: "mp4v"
   video_fps: null
+  video_crf: 28  # Smaller files for testing
+  video_preset: "fast"  # Faster encoding for testing
 
 cache_dir: ".cache"
 output_dir: "runs"

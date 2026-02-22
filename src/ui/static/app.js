@@ -175,6 +175,101 @@ const tagFilterCategory = document.getElementById('tagFilterCategory');
 const tagFilterSource = document.getElementById('tagFilterSource');
 const ctx = overlayCanvas.getContext('2d');
 
+// --- HLS Streaming Support ---
+// Active HLS.js instance (for cleanup when switching videos)
+let currentHlsInstance = null;
+
+/**
+ * Load a video source with HLS support.
+ * Tries HLS playlist first (instant seeking), falls back to plain MP4.
+ *
+ * @param {string} runName - The run directory name
+ * @param {boolean} useOverlay - If true, load overlay; if false, load original
+ * @param {number|null} seekTime - Optional time to seek to after loading
+ */
+function loadVideoSource(runName, useOverlay = false, seekTime = null) {
+    // Cleanup previous HLS instance
+    if (currentHlsInstance) {
+        currentHlsInstance.destroy();
+        currentHlsInstance = null;
+    }
+
+    const hlsUrl = `/api/runs/${runName}/hls/playlist.m3u8`;
+    const mp4Url = `/api/runs/${runName}/video` + (useOverlay ? '' : '?original=true');
+
+    // For original video, always use MP4 (HLS is only for overlay)
+    if (!useOverlay) {
+        videoSource.src = mp4Url;
+        videoPlayer.load();
+        if (seekTime !== null) videoPlayer.currentTime = seekTime;
+        return;
+    }
+
+    // Try HLS for overlay video
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        // Check if HLS playlist exists (use GET — HEAD not supported by FileResponse)
+        fetch(hlsUrl).then(resp => {
+            if (resp.ok) {
+                const hls = new Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                });
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(videoPlayer);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    if (seekTime !== null) videoPlayer.currentTime = seekTime;
+                });
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        console.warn('HLS fatal error, falling back to MP4:', data.type);
+                        hls.destroy();
+                        currentHlsInstance = null;
+                        videoSource.src = mp4Url;
+                        videoPlayer.load();
+                        if (seekTime !== null) videoPlayer.currentTime = seekTime;
+                    }
+                });
+                currentHlsInstance = hls;
+            } else {
+                // No HLS available, fallback to MP4
+                videoSource.src = mp4Url;
+                videoPlayer.load();
+                if (seekTime !== null) videoPlayer.currentTime = seekTime;
+            }
+        }).catch(() => {
+            // Network error checking HLS, fallback to MP4
+            videoSource.src = mp4Url;
+            videoPlayer.load();
+            if (seekTime !== null) videoPlayer.currentTime = seekTime;
+        });
+    } else if (typeof Hls !== 'undefined' && videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari native HLS support
+        fetch(hlsUrl).then(resp => {
+            if (resp.ok) {
+                videoPlayer.src = hlsUrl;
+                if (seekTime !== null) {
+                    videoPlayer.addEventListener('loadedmetadata', () => {
+                        videoPlayer.currentTime = seekTime;
+                    }, { once: true });
+                }
+            } else {
+                videoSource.src = mp4Url;
+                videoPlayer.load();
+                if (seekTime !== null) videoPlayer.currentTime = seekTime;
+            }
+        }).catch(() => {
+            videoSource.src = mp4Url;
+            videoPlayer.load();
+            if (seekTime !== null) videoPlayer.currentTime = seekTime;
+        });
+    } else {
+        // No HLS support, use MP4
+        videoSource.src = mp4Url;
+        videoPlayer.load();
+        if (seekTime !== null) videoPlayer.currentTime = seekTime;
+    }
+}
+
 // Restore theme from localStorage immediately
 (function() {
     const savedTheme = localStorage.getItem('theme');
@@ -332,6 +427,35 @@ function toggleCollapsible(section) {
     body.classList.toggle('collapsed', collapsed);
     if (chevron) chevron.classList.toggle('collapsed', collapsed);
     try { localStorage.setItem(`collapsed_${section}`, collapsed ? '1' : '0'); } catch(e) {}
+}
+
+function toggleIdentityStep(step) {
+    const body = document.getElementById(`collapsible-id-${step}`);
+    const chevron = document.getElementById(`chevron-id-${step}`);
+    if (!body) return;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? '' : 'none';
+    if (chevron) chevron.innerHTML = isHidden ? '&#9660;' : '&#9654;';
+    try { localStorage.setItem(`idstep_${step}`, isHidden ? '0' : '1'); } catch(e) {}
+}
+
+function restoreIdentityStepStates() {
+    ['suggestions', 'assignments', 'tools', 'roster'].forEach(step => {
+        try {
+            const stored = localStorage.getItem(`idstep_${step}`);
+            if (stored === '1') {
+                const body = document.getElementById(`collapsible-id-${step}`);
+                const chevron = document.getElementById(`chevron-id-${step}`);
+                if (body) body.style.display = 'none';
+                if (chevron) chevron.innerHTML = '&#9654;';
+            } else if (stored === '0') {
+                const body = document.getElementById(`collapsible-id-${step}`);
+                const chevron = document.getElementById(`chevron-id-${step}`);
+                if (body) body.style.display = '';
+                if (chevron) chevron.innerHTML = '&#9660;';
+            }
+        } catch(e) {}
+    });
 }
 
 function restoreCollapsibleStates() {
@@ -571,13 +695,14 @@ function jumpToSpeedrunWindow(index, keepPlayState = true) {
 
     const shouldPlay = keepPlayState ? !videoPlayer.paused : false;
     speedrunJumpInProgress = true;
-    videoPlayer.currentTime = targetWindow.start;
     speedrunState.currentWindowIndex = index;
-    speedrunJumpInProgress = false;
 
     if (shouldPlay) {
-        videoPlayer.play().catch(() => {});
+        _seekAndPlay(targetWindow.start);
+    } else {
+        videoPlayer.currentTime = targetWindow.start;
     }
+    speedrunJumpInProgress = false;
 
     setSpeedrunStatus(`Speedrun active ${index + 1}/${speedrunState.windows.length}`);
     return true;
@@ -677,6 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     relocateCrossMatchSections();
     restoreCollapsibleStates();
+    restoreIdentityStepStates();
     applyViewerLayout(loadViewerLayoutPreference());
     updateSpeedrunControls();
     updateCrossViewContexts();
@@ -738,10 +864,34 @@ async function loadPipelineConfigs() {
             html = '<option value="__builtin_default__">Built-in default</option>';
         }
         pipelineConfigPath.innerHTML = html;
+        updateConfigDescription();
     } catch (error) {
         console.error('Error loading pipeline configs:', error);
         pipelineConfigPath.innerHTML = '<option value="__builtin_default__">Built-in default</option>';
     }
+}
+
+function updateConfigDescription() {
+    const descDiv = document.getElementById('configDescription');
+    const descText = document.getElementById('configDescText');
+    const estTime = document.getElementById('configEstTime');
+    const estSize = document.getElementById('configEstSize');
+    if (!descDiv || !pipelineConfigPath) return;
+
+    const selectedValue = pipelineConfigPath.value;
+    const cfg = pipelineConfigs.find(c =>
+        (c.path || '__builtin_default__') === selectedValue
+    );
+    if (!cfg || (!cfg.description && !cfg.estimate_time)) {
+        descDiv.style.display = 'none';
+        return;
+    }
+    descDiv.style.display = '';
+    descText.textContent = cfg.description || '';
+    estTime.textContent = cfg.estimate_time || '';
+    estTime.style.display = cfg.estimate_time ? '' : 'none';
+    estSize.textContent = cfg.estimate_size || '';
+    estSize.style.display = cfg.estimate_size ? '' : 'none';
 }
 
 function pipelineProgressPercent(job) {
@@ -786,7 +936,7 @@ function renderPipelineJobs() {
         const message = job.message ? escapeHtml(String(job.message)) : '';
         const errorText = job.error ? `<div class="pipeline-job-meta status-error">${escapeHtml(String(job.error))}</div>` : '';
         const openRunAction = status === 'succeeded' && job.run_name
-            ? `<button class="identity-btn" onclick="loadRunByEncodedName('${encodedRunName}')">Open Run</button>`
+            ? `<button class="identity-btn" onclick="showView('matchAnalysisView');loadRunByEncodedName('${encodedRunName}')">Open Run</button>`
             : '';
         const cancelAction = (status === 'queued' || status === 'running')
             ? `<button class="identity-btn" ${cancelledPending ? 'disabled' : ''} onclick="cancelPipelineJob('${jobId}')">${cancelledPending ? 'Cancel Requested' : 'Cancel'}</button>`
@@ -1047,6 +1197,7 @@ async function submitPipelineJobs(formEvent) {
 async function loadRuns() {
     try {
         const response = await fetch('/api/runs');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         allRunsData = data.runs || [];
         renderRunsList();
@@ -1092,7 +1243,7 @@ function renderRunsList() {
     if (filtered.length === 0) {
         content.innerHTML = searchTerm
             ? '<p class="loading">No runs match your search</p>'
-            : '<p class="loading">No runs yet. Queue one or more videos from Pipeline Studio above.</p>';
+            : '<p class="loading">No runs yet. Queue videos from <a href="#" onclick="showView(\'pipelineStudioView\');return false;" style="color:var(--accent);text-decoration:underline;">Pipeline Studio</a>.</p>';
         return;
     }
 
@@ -1162,7 +1313,7 @@ async function deleteRun(encodedRunName) {
         await loadPipelineJobs(true);
     } catch (error) {
         console.error('Error deleting run:', error);
-        showToast(`Delete failed: ${error.message}`, true);
+        showToast(`Delete failed: ${error.message}`, 'error');
     }
 }
 
@@ -1236,8 +1387,7 @@ async function loadRun(runName, sourceElement = null) {
     showLoadingBar();
 
     // Load video (original by default for dynamic overlay)
-    videoSource.src = `/api/runs/${runName}/video?original=true`;
-    videoPlayer.load();
+    loadVideoSource(runName, false);
 
     try {
         // Load metadata
@@ -2118,7 +2268,7 @@ function renderRecomputePreview() {
     if (!recomputePreview) return;
 
     if (!recomputePreviewData || !recomputePreviewData.diff) {
-        recomputePreview.textContent = 'Preview diff not generated yet';
+        recomputePreview.textContent = 'No changes preview yet';
         return;
     }
 
@@ -2546,7 +2696,8 @@ function renderIdentityReview() {
     const manual = summary.manual ?? 0;
     const locked = summary.locked ?? 0;
     const unlocked = summary.unlocked ?? 0;
-    identitySummary.textContent = `${assigned}/${total} assigned • manual ${manual} • locked ${locked} • unlocked ${unlocked}`;
+    const pct = total > 0 ? Math.round((assigned / total) * 100) : 0;
+    identitySummary.textContent = `${assigned} of ${total.toLocaleString()} tracks identified (${pct}%) • ${manual} manual • ${locked} locked`;
 
     renderIdentityMergeOptions();
     renderIdentityPlayers();
@@ -3221,11 +3372,16 @@ async function undoIdentityEditByOperation(encodedOpId) {
 }
 
 // Get events filtered by the current eventFilterMode
+function _isEventTypeShot(eventType) {
+    return eventType === 'shot' || eventType === 'shot_on_target' || eventType === 'shot_off_target';
+}
+
 function getFilteredEvents() {
     if (!events || events.length === 0) return [];
     return events.filter(ev => {
         if (eventFilterMode === 'all') return true;
-        if (eventFilterMode === 'shot' || eventFilterMode === 'goal') return ev.event_type === eventFilterMode;
+        if (eventFilterMode === 'shot') return _isEventTypeShot(ev.event_type);
+        if (eventFilterMode === 'goal') return ev.event_type === 'goal';
         return (ev.status || 'pending') === eventFilterMode;
     });
 }
@@ -3236,7 +3392,7 @@ function renderEvents() {
     const counts = { all: 0, shot: 0, goal: 0, pending: 0, confirmed: 0, rejected: 0 };
     (events || []).forEach(ev => {
         counts.all++;
-        if (ev.event_type === 'shot') counts.shot++;
+        if (_isEventTypeShot(ev.event_type)) counts.shot++;
         if (ev.event_type === 'goal') counts.goal++;
         const st = ev.status || 'pending';
         if (st === 'pending') counts.pending++;
@@ -3281,7 +3437,7 @@ function renderEvents() {
 
         let details = '';
         if (event.metadata) {
-            if (event.event_type === 'shot' && event.metadata.speed) {
+            if (_isEventTypeShot(event.event_type) && event.metadata.speed) {
                 details += `Speed: ${event.metadata.speed.toFixed(1)}px/f`;
             }
             if (event.metadata.target_goal) {
@@ -3306,9 +3462,9 @@ function renderEvents() {
                     <button class="action-btn reject" onclick="showInlineNotes('${eventId}', 'reject', event)" title="Reject">Reject</button>
                 </div>
                 <div class="event-inline-notes" id="notes-${eventId}" style="display:none">
-                    <input type="text" id="notesInput-${eventId}" placeholder="Notes (optional)..." onkeydown="if(event.key==='Enter'){submitInlineNotes('${eventId}')}">
-                    <button class="action-btn approve" onclick="submitInlineNotes('${eventId}')">Submit</button>
-                    <button class="action-btn" style="background:var(--border);color:var(--text)" onclick="hideInlineNotes('${eventId}')">Cancel</button>
+                    <input type="text" id="notesInput-${eventId}" placeholder="Notes (optional)..." onkeydown="if(event.key==='Enter'){event.stopPropagation();submitInlineNotes('${eventId}')}">
+                    <button class="action-btn approve" onclick="submitInlineNotes('${eventId}', event)">Submit</button>
+                    <button class="action-btn" style="background:var(--border);color:var(--text)" onclick="event.stopPropagation();hideInlineNotes('${eventId}')">Cancel</button>
                 </div>
             `;
         } else if (source === 'manual') {
@@ -3358,6 +3514,7 @@ function showInlineNotes(eventId, action, clickEvent) {
     pendingInlineEventId = eventId;
     const container = document.getElementById(`notes-${eventId}`);
     if (container) {
+        container.dataset.action = action;
         container.style.display = 'flex';
         const input = document.getElementById(`notesInput-${eventId}`);
         if (input) input.focus();
@@ -3371,10 +3528,13 @@ function hideInlineNotes(eventId) {
     pendingInlineEventId = null;
 }
 
-async function submitInlineNotes(eventId) {
+async function submitInlineNotes(eventId, clickEvent) {
+    if (clickEvent) clickEvent.stopPropagation();
+    const container = document.getElementById(`notes-${eventId}`);
     const input = document.getElementById(`notesInput-${eventId}`);
     const notes = input ? input.value : '';
-    const action = pendingInlineAction;
+    // Prefer data-action on container (survives async timing issues)
+    const action = (container && container.dataset.action) || pendingInlineAction;
     pendingInlineAction = null;
     pendingInlineEventId = null;
 
@@ -3523,11 +3683,18 @@ function setupVideoPlayer() {
     }
 }
 
+// Helper: seek then play once the video is ready at the new position.
+// Uses the 'seeked' event so the frame is decoded before playback starts,
+// which avoids the visible buffering / stall spinner on large files.
+function _seekAndPlay(time) {
+    videoPlayer.currentTime = time;
+    videoPlayer.play().catch(() => {});
+}
+
 // Seek to event time
 function seekToEvent(timestamp) {
     activeSegmentEndTime = null;
-    videoPlayer.currentTime = timestamp;
-    videoPlayer.play();
+    _seekAndPlay(timestamp);
     updateUrlHash(timestamp);
 }
 
@@ -3538,8 +3705,7 @@ function playPlayerSegment(startTime, endTime) {
     }
     hideClipModal();
     activeSegmentEndTime = Number.isFinite(endTime) ? endTime : null;
-    videoPlayer.currentTime = Math.max(0, startTime || 0);
-    videoPlayer.play();
+    _seekAndPlay(Math.max(0, startTime || 0));
 }
 
 function playPlayerClip(playerId, encodedSegmentId, clickEvent) {
@@ -3587,6 +3753,7 @@ function formatTime(seconds) {
 async function loadMetadata(runName) {
     try {
         const response = await fetchWithRetry(`/api/runs/${runName}/metadata`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         videoMetadata = data.video_metadata;
         runSummaryData = data.summary || null;
@@ -3954,6 +4121,12 @@ function renderVisualizationPanel() {
     } else if (type === 'radial_chart') {
         summaryItems.push(`Metrics: ${Number(totals.metrics || 0)}`);
         summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
+    } else if (type === 'progress_chart') {
+        summaryItems.push(`Windows: ${Number(totals.windows || 0)}`);
+        summaryItems.push(`Duration: ${Number(totals.duration_seconds || 0).toFixed(0)}s`);
+    } else if (type === 'tactical_map') {
+        summaryItems.push(`Players: ${Number(totals.players || 0)}`);
+        summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
     } else {
         summaryItems.push(`Samples: ${Number(totals.samples || 0)}`);
         summaryItems.push(`Teams: ${Number(totals.teams || 0)}`);
@@ -3986,7 +4159,7 @@ async function loadVisualization(runName) {
     };
 
     const KNOWN_VIZ_TYPES = ['pass_map', 'shot_map', 'heat_map', 'tactical_map',
-        'momentum', 'pass_strings', 'radial_chart'];
+        'momentum', 'pass_strings', 'radial_chart', 'progress_chart'];
     const endpointType = KNOWN_VIZ_TYPES.includes(filters.type) ? filters.type : 'pass_map';
     const params = new URLSearchParams();
     if (filters.teamId) params.set('team_id', filters.teamId);
@@ -4350,10 +4523,12 @@ function toggleLayer(layer) {
 
     // Update button state
     const btn = document.getElementById(`toggle${layer.charAt(0).toUpperCase() + layer.slice(1)}`);
-    if (overlaySettings.layers[layer]) {
-        btn.classList.add('active');
-    } else {
-        btn.classList.remove('active');
+    if (btn) {
+        if (overlaySettings.layers[layer]) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
     }
 
     // Re-render
@@ -4365,25 +4540,23 @@ function toggleOriginalVideo() {
     showingOriginal = !showingOriginal;
 
     const btn = document.getElementById('toggleOriginal');
+    const currentTime = videoPlayer.currentTime;
+
     if (showingOriginal) {
-        // Show overlay video (baked)
-        videoSource.src = `/api/runs/${currentRun}/video`;
+        // Show overlay video (baked) — use HLS if available
+        loadVideoSource(currentRun, true, currentTime);
         btn.classList.add('active');
         btn.textContent = 'Show Original';
         // Hide canvas overlay when showing baked overlay
         overlayCanvas.style.display = 'none';
     } else {
         // Show original video with dynamic overlay
-        videoSource.src = `/api/runs/${currentRun}/video?original=true`;
+        loadVideoSource(currentRun, false, currentTime);
         btn.classList.remove('active');
         btn.textContent = 'Show Overlay Video';
         // Show canvas overlay
         overlayCanvas.style.display = 'block';
     }
-
-    const currentTime = videoPlayer.currentTime;
-    videoPlayer.load();
-    videoPlayer.currentTime = currentTime;
 }
 
 // Update team color
@@ -4726,6 +4899,7 @@ async function restoreFromHash() {
             playerReelFilters.sortBy = params.reelSort;
         }
         await loadRun(params.run);
+        showView('matchAnalysisView');
         // Restore event filter buttons after render
         if (params.filter) {
             setEventFilter(params.filter);
@@ -4745,6 +4919,7 @@ window.addEventListener('hashchange', () => {
     if (params.run) {
         const runExists = allRunsData.some(r => r.name === params.run);
         if (runExists && params.run !== currentRun) {
+            showView('matchAnalysisView');
             loadRun(params.run).then(() => {
                 if (params.time) {
                     const t = parseFloat(params.time);
@@ -4927,7 +5102,7 @@ function renderOnboardingCard() {
             <div class="onboarding-steps">
                 <div class="onboarding-step">
                     <div class="onboarding-step-number">1</div>
-                    <p>Enter a video path in Pipeline Studio above</p>
+                    <p>Enter a video path in <a href="#" onclick="showView('pipelineStudioView');return false;" style="color:var(--accent);text-decoration:underline;">Pipeline Studio</a></p>
                 </div>
                 <div class="onboarding-step">
                     <div class="onboarding-step-number">2</div>
@@ -4965,7 +5140,7 @@ function toggleNav() {
 
 function showView(viewName) {
     // Hide all views
-    const views = ['matchAnalysisView', 'playerReelsView', 'seasonTrendsView', 'teamManagerView', 'playerManagerView'];
+    const views = ['pipelineStudioView', 'matchAnalysisView', 'playerReelsView', 'seasonTrendsView', 'teamManagerView', 'playerManagerView'];
     views.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = id === viewName ? '' : 'none';
@@ -4983,7 +5158,9 @@ function showView(viewName) {
     }
 
     // Load data when switching to views
-    if (viewName === 'teamManagerView') {
+    if (viewName === 'pipelineStudioView') {
+        loadPipelineJobs(true);
+    } else if (viewName === 'teamManagerView') {
         loadTeams();
     } else if (viewName === 'playerManagerView') {
         loadPlayersManager();
@@ -5046,11 +5223,7 @@ function renderTeamsList() {
     }).join('');
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
+// escapeHtml is defined earlier in this file (line ~1828) with full entity escaping
 
 function showCreateTeamForm() {
     const form = document.getElementById('createTeamForm');
@@ -5541,7 +5714,7 @@ function showCreatePlayerForm() {
     const form = document.getElementById('createPlayerForm');
     if (form) {
         form.style.display = 'flex';
-        populateTeamSelect('newPlayerTeam', pmAllTeams);
+        populateTeamSelect('mgrPlayerTeam', pmAllTeams);
     }
 }
 
@@ -5551,9 +5724,9 @@ function hideCreatePlayerForm() {
 }
 
 async function createPlayerFromManager() {
-    const nameEl = document.getElementById('newPlayerName');
+    const nameEl = document.getElementById('mgrPlayerName');
     const numEl = document.getElementById('newPlayerNumber');
-    const teamEl = document.getElementById('newPlayerTeam');
+    const teamEl = document.getElementById('mgrPlayerTeam');
     const hintEl = document.getElementById('newPlayerHint');
 
     const name = nameEl ? nameEl.value.trim() : '';

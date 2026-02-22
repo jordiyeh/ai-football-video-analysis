@@ -439,8 +439,17 @@ class ExportConfig(BaseModel):
     save_events: bool = True
     save_overlay_video: bool = True
     detections_format: Literal["parquet", "jsonl", "csv"] = "parquet"
-    video_codec: str = "mp4v"
+    video_codec: str = "mp4v"  # Legacy OpenCV FourCC (used as fallback)
     video_fps: float | None = None  # If None, use original fps
+
+    # H.264 compression via ffmpeg (dramatically reduces file size)
+    video_crf: int = 23  # Constant Rate Factor: 0=lossless, 23=default, 28=smaller
+    video_preset: str = "medium"  # Encoding speed: ultrafast/fast/medium/slow/veryslow
+    video_use_ffmpeg: bool = True  # Use ffmpeg pipe instead of OpenCV VideoWriter
+
+    # HLS streaming (post-render segmentation for instant seeking in browser)
+    video_hls: bool = True  # Generate HLS segments after overlay render
+    video_hls_segment_seconds: int = 10  # Target segment duration
 
 
 class ReIDConfig(BaseModel):

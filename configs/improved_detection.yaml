@@ -1,0 +1,75 @@
+# Improved configuration for better ball detection and event detection
+# Optimized based on low ball detection rates in initial testing
+
+video:
+  sampling_strategy: "every_nth"
+  sampling_interval: 5  # Process every 5th frame (balance of speed and accuracy)
+  target_fps: null
+
+detection:
+  model_name: "yolov8x.pt"  # Best model for accuracy
+  device: "mps"
+  confidence_threshold: 0.5  # Player threshold
+  batch_size: 8
+  player_class_id: 0
+  ball_class_id: 32
+  # Ball-specific detection settings (aggressive for maximum detection rate)
+  ball:
+    confidence_threshold: 0.12  # Very low threshold - temporal filter will clean up
+    enable_multiscale: true  # Essential for small ball detection
+    scales: [0.5, 0.75, 1.0, 1.25, 1.5]  # More scales for better coverage
+    merge_iou_threshold: 0.5
+    enable_temporal_filter: true  # Critical for rejecting noise
+    temporal_window_size: 7  # Larger window for more robust filtering
+    max_frame_displacement: 150.0  # Allow for fast-moving ball
+    min_temporal_confirmations: 2
+    enable_candidate_tracking: true  # Track ball candidates
+    candidate_min_hits: 2  # Lower threshold for faster promotion
+    candidate_max_age: 8  # Keep candidates longer for sparse detections
+    max_size_ratio: 0.08  # Slightly larger for varying zoom levels
+    max_aspect_ratio: 2.5  # Slightly stricter aspect ratio
+
+tracking:
+  algorithm: "bytetrack"
+  max_age: 50  # Keep tracks longer for sparse ball detections
+  min_hits: 2  # Lower requirement for ball tracks
+  iou_threshold: 0.3
+
+team:
+  method: "color_clustering"
+  n_clusters: 2
+  our_team_color: null
+  opponent_color: null
+
+events:
+  detect_shots: true
+  detect_goals: true
+  detect_passes: false
+  detect_set_pieces: true
+  shot_velocity_threshold: 6.0  # Lower threshold for more sensitivity
+  goal_confidence_threshold: 0.4  # Lower threshold for more candidates
+  min_shot_duration_frames: 2
+  interpolate_ball: true  # Fill gaps in ball trajectory
+  max_interpolation_gap: 45  # Interpolate up to 1.5 seconds at 30fps
+
+overlay:
+  bbox_thickness: 2
+  show_confidence: true
+  show_track_ids: true
+  show_team_colors: true
+  player_color: "#00FF00"
+  ball_color: "#FF0000"
+  trail_length: 45
+
+export:
+  save_detections: true
+  save_tracks: true
+  save_events: true
+  save_overlay_video: true
+  detections_format: "parquet"
+  video_codec: "mp4v"
+  video_fps: null
+
+cache_dir: ".cache"
+output_dir: "runs"
+enable_cache: true

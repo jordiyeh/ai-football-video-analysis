@@ -1,0 +1,38 @@
+[
+  {
+    "event_type": "shot",
+    "frame_idx": 150,
+    "timestamp": 5.0,
+    "confidence": 0.85,
+    "location": [960.0, 400.0],
+    "metadata": {
+      "speed": 22.5,
+      "target_goal": "top",
+      "duration_frames": 15
+    }
+  },
+  {
+    "event_type": "goal",
+    "frame_idx": 170,
+    "timestamp": 5.67,
+    "confidence": 0.92,
+    "location": [960.0, 50.0],
+    "metadata": {
+      "goal_region": "top",
+      "shot_frame": 150,
+      "shot_timestamp": 5.0
+    }
+  },
+  {
+    "event_type": "shot",
+    "frame_idx": 450,
+    "timestamp": 15.0,
+    "confidence": 0.78,
+    "location": [500.0, 600.0],
+    "metadata": {
+      "speed": 18.3,
+      "target_goal": "bottom",
+      "duration_frames": 12
+    }
+  }
+]

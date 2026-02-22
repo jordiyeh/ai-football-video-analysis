@@ -134,12 +134,19 @@ class SetPieceInferenceConfig:
     goal_kick_y_band_ratio: float = 0.12
     goal_kick_center_band_ratio_x: float = 0.22
 
+    # Penalty detection.
+    penalty_spot_x_band_ratio: float = 0.08
+    penalty_spot_y_ratio_from_edge: float = 0.18
+    penalty_spot_y_band_ratio: float = 0.06
+    penalty_max_nearby_players: int = 2
+
     # Per-type acceptance thresholds.
     kickoff_min_confidence: float = 0.60
     throw_in_min_confidence: float = 0.56
     corner_kick_min_confidence: float = 0.60
     free_kick_min_confidence: float = 0.52
     goal_kick_min_confidence: float = 0.58
+    penalty_min_confidence: float = 0.58
 
     @classmethod
     def from_any(cls, config: Any | None) -> "SetPieceInferenceConfig":
@@ -205,6 +212,22 @@ class SetPieceInferenceConfig:
             ),
             goal_kick_min_confidence=float(
                 _cfg_value(config, "goal_kick_min_confidence", cls.goal_kick_min_confidence)
+            ),
+            penalty_spot_x_band_ratio=float(
+                _cfg_value(config, "penalty_spot_x_band_ratio", cls.penalty_spot_x_band_ratio)
+            ),
+            penalty_spot_y_ratio_from_edge=float(
+                _cfg_value(config, "penalty_spot_y_ratio_from_edge", cls.penalty_spot_y_ratio_from_edge)
+            ),
+            penalty_spot_y_band_ratio=float(
+                _cfg_value(config, "penalty_spot_y_band_ratio", cls.penalty_spot_y_band_ratio)
+            ),
+            penalty_max_nearby_players=max(
+                1,
+                int(_cfg_value(config, "penalty_max_nearby_players", cls.penalty_max_nearby_players)),
+            ),
+            penalty_min_confidence=float(
+                _cfg_value(config, "penalty_min_confidence", cls.penalty_min_confidence)
             ),
         )
 
@@ -553,12 +576,27 @@ class SetPieceInferencer:
         free_kick_base = (0.25 * free_kick_location) + (0.75 * generic_quality)
         free_kick_score = free_kick_base * (1.0 - (0.55 * specialized_strength))
 
+        # Penalty spot detection: ball near penalty spot position
+        # Penalty spots are ~0.18 from each y-edge, centered on x
+        penalty_center_x = _score_band(abs(x_norm - 0.5), self.config.penalty_spot_x_band_ratio)
+        penalty_top_y = _score_band(
+            abs(y_norm - self.config.penalty_spot_y_ratio_from_edge),
+            self.config.penalty_spot_y_band_ratio,
+        )
+        penalty_bottom_y = _score_band(
+            abs((1.0 - y_norm) - self.config.penalty_spot_y_ratio_from_edge),
+            self.config.penalty_spot_y_band_ratio,
+        )
+        penalty_spot = max(penalty_top_y, penalty_bottom_y)
+        penalty_location = penalty_center_x * penalty_spot
+
         classification_scores = {
             "kickoff": (0.60 * kickoff_location) + (0.40 * generic_quality),
             "throw_in": (0.50 * throw_in_location) + (0.20 * throw_inward) + (0.30 * generic_quality),
             "corner_kick": (0.55 * corner_location) + (0.20 * corner_inward) + (0.25 * generic_quality),
             "free_kick": free_kick_score,
             "goal_kick": (0.50 * goal_kick_location) + (0.20 * goal_outward) + (0.30 * generic_quality),
+            "penalty": (0.55 * penalty_location) + (0.45 * generic_quality),
         }
 
         thresholds = self._threshold_map()
@@ -580,6 +618,7 @@ class SetPieceInferencer:
                     "corner_kick": corner_location,
                     "free_kick": free_kick_location,
                     "goal_kick": goal_kick_location,
+                    "penalty": penalty_location,
                 }[event_type]
             ),
             "direction_score": float(
@@ -589,6 +628,7 @@ class SetPieceInferencer:
                     "corner_kick": corner_inward,
                     "free_kick": 0.5,
                     "goal_kick": goal_outward,
+                    "penalty": 0.5,
                 }[event_type]
             ),
             "threshold": float(thresholds[event_type]),
@@ -657,6 +697,7 @@ class SetPieceInferencer:
             "corner_kick": float(self.config.corner_kick_min_confidence),
             "free_kick": float(self.config.free_kick_min_confidence),
             "goal_kick": float(self.config.goal_kick_min_confidence),
+            "penalty": float(self.config.penalty_min_confidence),
         }
 
 

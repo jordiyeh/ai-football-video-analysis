@@ -33,6 +33,26 @@ from src.export.visualizations.tactical_map import (
     TacticalMapRenderer,
     build_tactical_map,
 )
+from src.export.visualizations.momentum_graph import (
+    MOMENTUM_GRAPH_SCHEMA_VERSION,
+    MomentumGraphRenderer,
+    build_momentum_graph,
+)
+from src.export.visualizations.pass_strings import (
+    PASS_STRINGS_SCHEMA_VERSION,
+    PassStringsRenderer,
+    build_pass_strings,
+)
+from src.export.visualizations.radial_chart import (
+    RADIAL_CHART_SCHEMA_VERSION,
+    RadialChartRenderer,
+    build_radial_chart,
+)
+from src.export.visualizations.progress_chart import (
+    PROGRESS_CHART_SCHEMA_VERSION,
+    ProgressChartRenderer,
+    build_progress_chart,
+)
 
 __all__ = [
     "VISUALIZATION_SCHEMA_VERSION",
@@ -56,4 +76,16 @@ __all__ = [
     "TACTICAL_MAP_SCHEMA_VERSION",
     "TacticalMapRenderer",
     "build_tactical_map",
+    "MOMENTUM_GRAPH_SCHEMA_VERSION",
+    "MomentumGraphRenderer",
+    "build_momentum_graph",
+    "PASS_STRINGS_SCHEMA_VERSION",
+    "PassStringsRenderer",
+    "build_pass_strings",
+    "RADIAL_CHART_SCHEMA_VERSION",
+    "RadialChartRenderer",
+    "build_radial_chart",
+    "PROGRESS_CHART_SCHEMA_VERSION",
+    "ProgressChartRenderer",
+    "build_progress_chart",
 ]

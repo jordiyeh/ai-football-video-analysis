@@ -1,0 +1,38 @@
+[
+  {
+    "track_id": 1,
+    "object_type": "player",
+    "team_id": 0,
+    "positions": [
+      {"frame_idx": 0, "bbox": [100.0, 100.0, 150.0, 200.0], "confidence": 0.92},
+      {"frame_idx": 1, "bbox": [105.0, 102.0, 155.0, 202.0], "confidence": 0.91},
+      {"frame_idx": 2, "bbox": [110.0, 104.0, 160.0, 204.0], "confidence": 0.90},
+      {"frame_idx": 3, "bbox": [115.0, 106.0, 165.0, 206.0], "confidence": 0.89},
+      {"frame_idx": 4, "bbox": [120.0, 108.0, 170.0, 208.0], "confidence": 0.88}
+    ]
+  },
+  {
+    "track_id": 2,
+    "object_type": "player",
+    "team_id": 1,
+    "positions": [
+      {"frame_idx": 0, "bbox": [800.0, 100.0, 850.0, 200.0], "confidence": 0.88},
+      {"frame_idx": 1, "bbox": [795.0, 102.0, 845.0, 202.0], "confidence": 0.87},
+      {"frame_idx": 2, "bbox": [790.0, 104.0, 840.0, 204.0], "confidence": 0.86},
+      {"frame_idx": 3, "bbox": [785.0, 106.0, 835.0, 206.0], "confidence": 0.85},
+      {"frame_idx": 4, "bbox": [780.0, 108.0, 830.0, 208.0], "confidence": 0.84}
+    ]
+  },
+  {
+    "track_id": 3,
+    "object_type": "ball",
+    "team_id": null,
+    "positions": [
+      {"frame_idx": 0, "bbox": [960.0, 540.0, 980.0, 560.0], "confidence": 0.75},
+      {"frame_idx": 1, "bbox": [962.0, 538.0, 982.0, 558.0], "confidence": 0.78},
+      {"frame_idx": 2, "bbox": [964.0, 536.0, 984.0, 556.0], "confidence": 0.80},
+      {"frame_idx": 3, "bbox": [966.0, 534.0, 986.0, 554.0], "confidence": 0.77},
+      {"frame_idx": 4, "bbox": [968.0, 532.0, 988.0, 552.0], "confidence": 0.76}
+    ]
+  }
+]

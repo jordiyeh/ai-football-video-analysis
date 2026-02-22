@@ -1,9 +1,12 @@
 """Ball trajectory analysis for event detection."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from src.config.schemas import InterpolationConfig
 
 
 @dataclass
@@ -16,6 +19,8 @@ class BallTrajectoryPoint:
     velocity: tuple[float, float] | None  # (vx, vy) pixels/frame
     speed: float | None  # pixels/frame
     confidence: float
+    interpolated: bool = False
+    interpolation_source: str | None = None  # "linear", "physics_forward", "physics_blended"
 
 
 class BallTrajectory:
@@ -241,3 +246,288 @@ class BallTrajectory:
             or y < margin_y
             or y > frame_height - margin_y
         )
+
+    def interpolate_gaps(
+        self,
+        max_gap_frames: int = 300,
+        fps: float = 30.0,
+        config: "InterpolationConfig | None" = None,
+    ) -> "BallTrajectory":
+        """
+        Fill gaps in trajectory using linear or physics-based interpolation.
+
+        For short gaps (<= physics_threshold), uses linear interpolation.
+        For longer gaps, uses Kalman filter prediction with bidirectional blending.
+
+        Args:
+            max_gap_frames: Maximum frame gap to interpolate across (legacy, use config.max_gap)
+            fps: Video FPS for timestamp calculation
+            config: Interpolation configuration (optional, uses defaults if not provided)
+
+        Returns:
+            New BallTrajectory with interpolated points
+        """
+        # Use config or defaults
+        if config is None:
+            from src.config.schemas import InterpolationConfig
+            config = InterpolationConfig()
+
+        # Use config.max_gap if larger than legacy parameter
+        effective_max_gap = max(max_gap_frames, config.max_gap)
+
+        if len(self.points) < 2:
+            return self
+
+        # Sort points by frame index
+        sorted_points = sorted(self.points, key=lambda p: p.frame_idx)
+
+        interpolated_points = []
+
+        for i in range(len(sorted_points) - 1):
+            current = sorted_points[i]
+            next_point = sorted_points[i + 1]
+
+            # Add current point (not interpolated)
+            interpolated_points.append(current)
+
+            # Check gap size
+            gap = next_point.frame_idx - current.frame_idx
+
+            if gap > 1 and gap <= effective_max_gap:
+                if gap <= config.physics_threshold:
+                    # Short gaps: use linear interpolation
+                    new_points = self._interpolate_linear(
+                        current, next_point, gap, fps, config
+                    )
+                else:
+                    # Longer gaps: use physics-based interpolation
+                    new_points = self._interpolate_physics(
+                        current, next_point, gap, fps, config
+                    )
+                interpolated_points.extend(new_points)
+
+        # Add last point (not interpolated)
+        interpolated_points.append(sorted_points[-1])
+
+        # Create new trajectory with interpolated points
+        new_trajectory = BallTrajectory(smoothing_window=self.smoothing_window)
+        new_trajectory.points = interpolated_points
+        new_trajectory._compute_velocities()
+
+        return new_trajectory
+
+    def _interpolate_linear(
+        self,
+        start: BallTrajectoryPoint,
+        end: BallTrajectoryPoint,
+        gap: int,
+        fps: float,
+        config: "InterpolationConfig",
+    ) -> list[BallTrajectoryPoint]:
+        """
+        Linear interpolation for short gaps.
+
+        Args:
+            start: Starting point
+            end: Ending point
+            gap: Number of frames between start and end
+            fps: Video FPS
+            config: Interpolation configuration
+
+        Returns:
+            List of interpolated points (not including start/end)
+        """
+        points = []
+
+        for frame_offset in range(1, gap):
+            t = frame_offset / gap  # 0 to 1
+
+            interp_x = start.position[0] + t * (end.position[0] - start.position[0])
+            interp_y = start.position[1] + t * (end.position[1] - start.position[1])
+
+            interp_frame = start.frame_idx + frame_offset
+            interp_timestamp = interp_frame / fps
+
+            # Confidence calculation for linear interpolation
+            interp_confidence = self._compute_interpolation_confidence(
+                start, end, frame_offset, gap, fps, config
+            )
+
+            interp_point = BallTrajectoryPoint(
+                frame_idx=interp_frame,
+                timestamp=interp_timestamp,
+                position=(interp_x, interp_y),
+                velocity=None,
+                speed=None,
+                confidence=interp_confidence,
+                interpolated=True,
+                interpolation_source="linear",
+            )
+            points.append(interp_point)
+
+        return points
+
+    def _interpolate_physics(
+        self,
+        start: BallTrajectoryPoint,
+        end: BallTrajectoryPoint,
+        gap: int,
+        fps: float,
+        config: "InterpolationConfig",
+    ) -> list[BallTrajectoryPoint]:
+        """
+        Physics-based interpolation using Kalman filter with bidirectional blending.
+
+        Args:
+            start: Starting point
+            end: Ending point
+            gap: Number of frames between start and end
+            fps: Video FPS
+            config: Interpolation configuration
+
+        Returns:
+            List of interpolated points (not including start/end)
+        """
+        from src.events.kalman_filter import BallKalmanFilter
+
+        # Create forward Kalman filter from start point
+        forward_filter = BallKalmanFilter(
+            process_noise_position=config.process_noise_position,
+            process_noise_velocity=config.process_noise_velocity,
+            process_noise_acceleration=config.process_noise_acceleration,
+            measurement_noise=config.measurement_noise,
+            acceleration_decay=config.acceleration_decay,
+        )
+        forward_filter.initialize(
+            position=start.position,
+            velocity=start.velocity,
+        )
+
+        # Forward predictions
+        forward_positions = []
+        for _ in range(1, gap):
+            pos = forward_filter.predict(dt=1.0)
+            forward_positions.append(pos)
+
+        if config.use_bidirectional:
+            # Create backward Kalman filter from end point
+            backward_filter = BallKalmanFilter(
+                process_noise_position=config.process_noise_position,
+                process_noise_velocity=config.process_noise_velocity,
+                process_noise_acceleration=config.process_noise_acceleration,
+                measurement_noise=config.measurement_noise,
+                acceleration_decay=config.acceleration_decay,
+            )
+
+            # Reverse velocity for backward prediction
+            backward_velocity = None
+            if end.velocity is not None:
+                backward_velocity = (-end.velocity[0], -end.velocity[1])
+
+            backward_filter.initialize(
+                position=end.position,
+                velocity=backward_velocity,
+            )
+
+            # Backward predictions (in reverse order)
+            backward_positions_reversed = []
+            for _ in range(1, gap):
+                pos = backward_filter.predict(dt=1.0)
+                backward_positions_reversed.append(pos)
+
+            # Reverse to get forward order
+            backward_positions = list(reversed(backward_positions_reversed))
+
+            # Blend forward and backward predictions using smoothstep
+            blended_positions = []
+            for i in range(len(forward_positions)):
+                t = (i + 1) / gap  # 0 to 1 (exclusive of endpoints)
+                # Smoothstep: 3t² - 2t³ (gives more weight to endpoints)
+                blend_weight = 3 * t * t - 2 * t * t * t
+
+                fx, fy = forward_positions[i]
+                bx, by = backward_positions[i]
+
+                # Blend: start with forward (weight 1-blend), end with backward (weight blend)
+                blended_x = fx * (1 - blend_weight) + bx * blend_weight
+                blended_y = fy * (1 - blend_weight) + by * blend_weight
+
+                blended_positions.append((blended_x, blended_y))
+
+            final_positions = blended_positions
+            interpolation_source = "physics_blended"
+        else:
+            final_positions = forward_positions
+            interpolation_source = "physics_forward"
+
+        # Create trajectory points
+        points = []
+        for i, (x, y) in enumerate(final_positions):
+            frame_offset = i + 1
+            interp_frame = start.frame_idx + frame_offset
+            interp_timestamp = interp_frame / fps
+
+            interp_confidence = self._compute_interpolation_confidence(
+                start, end, frame_offset, gap, fps, config
+            )
+
+            interp_point = BallTrajectoryPoint(
+                frame_idx=interp_frame,
+                timestamp=interp_timestamp,
+                position=(x, y),
+                velocity=None,
+                speed=None,
+                confidence=interp_confidence,
+                interpolated=True,
+                interpolation_source=interpolation_source,
+            )
+            points.append(interp_point)
+
+        return points
+
+    def _compute_interpolation_confidence(
+        self,
+        start: BallTrajectoryPoint,
+        end: BallTrajectoryPoint,
+        frame_offset: int,
+        gap: int,
+        fps: float,
+        config: "InterpolationConfig",
+    ) -> float:
+        """
+        Compute confidence for an interpolated point.
+
+        Confidence decays exponentially with distance from nearest known point.
+        Formula: base_conf * decay_rate^(distance_in_seconds * 30) with floor at min_confidence
+
+        Args:
+            start: Starting known point
+            end: Ending known point
+            frame_offset: Frames from start
+            gap: Total gap size
+            fps: Video FPS
+            config: Interpolation configuration
+
+        Returns:
+            Confidence value between min_confidence and base confidence
+        """
+        # Base confidence is minimum of endpoints
+        base_confidence = min(start.confidence, end.confidence)
+
+        # Distance from nearest endpoint (in frames)
+        distance_from_start = frame_offset
+        distance_from_end = gap - frame_offset
+        min_distance = min(distance_from_start, distance_from_end)
+
+        # Convert to seconds for decay calculation
+        distance_seconds = min_distance / fps
+
+        # Per-second decay rate raised to distance in seconds
+        # The decay_rate is configured as "per second at 30fps"
+        decay = config.confidence_decay_rate ** (distance_seconds * 30)
+
+        # Apply decay with floor
+        confidence = base_confidence * decay
+        confidence = max(confidence, config.min_confidence)
+
+        return confidence

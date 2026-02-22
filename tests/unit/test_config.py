@@ -18,6 +18,17 @@ def test_default_config():
     assert config.overlay.bbox_thickness == 2
     assert config.cache_dir == ".cache"
     assert config.output_dir == "runs"
+    assert config.highlights.enabled is True
+    assert config.highlights.player_reels.enabled is True
+    assert config.field.enabled is True
+    assert config.team_analytics.enabled is True
+    assert config.cross_match.enabled is True
+    assert config.identity.profile_ingestion.enabled is False
+    assert config.identity.profile_ingestion.profiles_root is None
+    assert config.identity.multimodal.enabled is True
+    assert config.identity.multimodal.face.enabled is True
+    assert config.identity.multimodal.jersey_ocr.enabled is True
+    assert config.identity.multimodal.locking.enabled is True
 
 
 def test_video_config():

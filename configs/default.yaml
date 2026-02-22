@@ -62,10 +62,58 @@ team:
   our_team_color: null  # Optional: hex color hint (e.g., "#0000FF")
   opponent_color: null  # Optional: hex color hint (e.g., "#FF0000")
 
+field:
+  enabled: true
+  min_players_per_frame: 6
+  player_percentile_low: 0.10
+  player_percentile_high: 0.90
+  margin_ratio: 0.12
+  smoothing_alpha: 0.25
+  min_viewport_width_ratio: 0.35
+  min_viewport_height_ratio: 0.35
+  clip_norm: true
+
+team_analytics:
+  enabled: true
+  use_norm_coordinates: true
+  possession_max_ball_distance_px: 140.0
+  possession_smoothing_frames: 3
+  possession_min_stable_frames: 3
+  possession_min_segment_frames: 4
+  possession_minute_bucket_seconds: 60.0
+  possession_phase_boundaries_norm_x: [0.33, 0.67]
+  pass_min_gap_seconds: 0.15
+  pass_max_gap_seconds: 2.5
+  territory_x_bins: 3
+  territory_y_bins: 3
+  pressure_radius_norm: 0.10
+  high_press_threshold: 0.65
+  high_press_min_frames: 8
+  min_assignment_confidence: 0.6
+
+cross_match:
+  enabled: true
+  runs_root: null
+  include_current_run: true
+  max_runs: 60
+  last_n_window: 5
+  top_players: 15
+  min_player_segment_score: 0.25
+  match_type_filter: []
+  formation_filter: []
+
+coach_assist:
+  enabled: false
+  provider: "heuristic"  # Options: "heuristic", "cloud"
+  allow_cloud: false
+  max_insights: 5
+  min_confidence: 0.45
+
 events:
   detect_shots: true
   detect_goals: true
   detect_passes: false  # Phase 2+
+  detect_set_pieces: true
   shot_velocity_threshold: 5.0  # pixels/frame
   goal_confidence_threshold: 0.7
 
@@ -148,6 +196,53 @@ events:
     blend_threshold: 0.6  # Blend visual+heuristic between 0.3 and 0.6
     interpolation_max_gap: 60  # Max frames to interpolate across
 
+highlights:
+  enabled: true
+  event:
+    include_goals: true
+    include_shots: true
+    goal_weight: 1.0
+    shot_weight: 0.7
+    min_confidence: 0.2
+  audio:
+    enabled: true
+    sample_rate: 2000  # Low-rate RMS is enough for crowd spike detection
+    window_seconds: 1.0
+    hop_seconds: 0.25
+    min_z_score: 2.0
+    min_abs_rms: 0.01
+    min_gap_seconds: 2.0
+    max_spikes: 120
+    weight: 0.45
+  action:
+    enabled: true
+    min_speed_pixels_per_sec: 220.0
+    player_pressure_radius: 120.0
+    score_quantile: 0.9
+    min_candidate_score: 0.45
+    max_candidates: 120
+    weight: 0.55
+  segment:
+    pre_roll_seconds: 8.0
+    post_roll_seconds: 12.0
+    merge_gap_seconds: 4.0
+    top_n: 20
+    min_segment_score: 0.4
+  export:
+    save_clips: false  # Set true to render mp4 highlight clips into runs/<run>/clips/
+    clips_dir: "clips"
+    clip_video_codec: "libx264"
+    clip_audio_codec: "aac"
+  player_reels:
+    enabled: true
+    max_segments_per_player: 8
+    min_presence_seconds: 1.5
+    min_player_segment_score: 0.2
+    min_assignment_confidence: 0.6
+    include_suggested_assignments: true
+    save_clips: false
+    clips_dir: "player_clips"
+
 overlay:
   bbox_thickness: 2
   show_confidence: true
@@ -163,8 +258,15 @@ export:
   save_events: true
   save_overlay_video: true
   detections_format: "parquet"  # Options: "parquet", "jsonl", "csv"
-  video_codec: "mp4v"  # FourCC codec
+  video_codec: "mp4v"  # FourCC codec (legacy OpenCV fallback)
   video_fps: null  # If null, use original fps
+  # H.264 compression (reduces overlay from ~37GB to ~4-6GB for a 96-min match)
+  video_crf: 23  # Constant Rate Factor: 0=lossless, 23=good quality, 28=smaller
+  video_preset: "medium"  # Encoding speed: ultrafast/fast/medium/slow/veryslow
+  video_use_ffmpeg: true  # Use ffmpeg pipe for H.264 (falls back to OpenCV if unavailable)
+  # HLS streaming (instant seeking in browser for large overlay videos)
+  video_hls: true  # Split overlay into HLS segments after render
+  video_hls_segment_seconds: 10  # Segment duration in seconds
 
 # ReID (Re-Identification) configuration for player embeddings
 reid:
@@ -185,6 +287,43 @@ identity:
   auto_match_threshold: 0.85  # Auto-assign player above this similarity
   suggest_threshold: 0.70  # Suggest match above this similarity
   new_player_threshold: 0.60  # Create new player below this similarity
+  profile_ingestion:
+    enabled: false
+    profiles_root: null  # Example: "/Users/yehj10/iCloud/vs/download_icloud_images/team_pictures"
+    recursive_image_scan: false
+    image_extensions: [".jpg", ".jpeg", ".png", ".webp"]
+    enable_body_embedding_seed: true  # Build OSNet signatures from profile photos
+    max_images_per_profile_for_reid: 5
+    min_profile_crops_for_seed: 2
+    detector_confidence_threshold: 0.3
+    fallback_full_image: true
+    profile_match_enabled: true
+    profile_match_auto_threshold: 0.82
+    profile_match_suggest_threshold: 0.68
+    profile_override_margin: 0.05
+    profile_agreement_bonus: 0.05
+  multimodal:
+    enabled: true
+    face:
+      enabled: true
+      max_images_per_profile: 5
+      min_profile_face_images: 1
+      min_track_support_frames: 2
+      suggest_threshold: 0.68
+      override_margin: 0.08
+      agreement_bonus: 0.04
+    jersey_ocr:
+      enabled: true
+      min_ocr_confidence: 0.45
+      min_track_support_frames: 2
+      override_margin: 0.12
+      agreement_bonus: 0.03
+    locking:
+      enabled: true
+      lock_confidence_threshold: 0.82
+      overlap_conflict_frames: 45
+      substitution_gap_frames: 150
+      demote_conflicting_auto: true
 
 cache_dir: ".cache"
 output_dir: "runs"
