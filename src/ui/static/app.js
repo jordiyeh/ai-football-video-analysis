@@ -158,6 +158,9 @@ const mergeFromPlayer = document.getElementById('mergeFromPlayer');
 const bulkAssignPlayer = document.getElementById('bulkAssignPlayer');
 const bulkSelectedCount = document.getElementById('bulkSelectedCount');
 const pipelineVideoPaths = document.getElementById('pipelineVideoPaths');
+const pipelineVideoUploadInput = document.getElementById('pipelineVideoUploadInput');
+const uploadVideosBtn = document.getElementById('uploadVideosBtn');
+const browseVideosBtn = document.getElementById('browseVideosBtn');
 const pipelineConfigPath = document.getElementById('pipelineConfigPath');
 const pipelineRunPrefix = document.getElementById('pipelineRunPrefix');
 const pipelineResume = document.getElementById('pipelineResume');
@@ -174,6 +177,7 @@ const tagFilterLabel = document.getElementById('tagFilterLabel');
 const tagFilterCategory = document.getElementById('tagFilterCategory');
 const tagFilterSource = document.getElementById('tagFilterSource');
 const ctx = overlayCanvas.getContext('2d');
+let pipelineUploadPromise = null;
 
 // --- HLS Streaming Support ---
 // Active HLS.js instance (for cleanup when switching videos)
@@ -814,6 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPipelineConfigs();
     loadPipelineJobs(true);
     loadPipelineTeamSelectors();
+    initPipelineUploadControls();
     restoreFromHash();
     setupVideoPlayer();
     if (pipelineJobsPollHandle == null) {
@@ -829,6 +834,115 @@ function setPipelineStatus(message, isError = false) {
     pipelineStudioStatus.classList.toggle('status-error', isError);
     pipelineStudioStatus.classList.toggle('status-info', !isError);
     if (isError && message) showToast(message, 'error');
+}
+
+function isMobileBrowser() {
+    const ua = navigator.userAgent || '';
+    const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    return /Android|webOS|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua) || touchMac;
+}
+
+function setPipelineUploadBusy(isBusy) {
+    if (uploadVideosBtn) uploadVideosBtn.disabled = isBusy;
+    if (browseVideosBtn) browseVideosBtn.disabled = isBusy;
+    if (pipelineSubmitBtn) pipelineSubmitBtn.disabled = isBusy;
+}
+
+function appendPipelineVideoPaths(paths) {
+    if (!pipelineVideoPaths || !Array.isArray(paths) || paths.length === 0) return;
+    const existingLines = pipelineVideoPaths.value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    const nextLines = paths
+        .map((path) => String(path || '').trim())
+        .filter((path) => path.length > 0);
+    if (nextLines.length === 0) return;
+
+    pipelineVideoPaths.value = existingLines.concat(nextLines).join('\n');
+    pipelineVideoPaths.setCustomValidity('');
+    pipelineVideoPaths.dispatchEvent(new Event('input', { bubbles: true }));
+    pipelineVideoPaths.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function triggerVideoUploadPicker() {
+    if (pipelineVideoUploadInput) {
+        pipelineVideoUploadInput.click();
+    }
+}
+
+function initPipelineUploadControls() {
+    if (pipelineVideoUploadInput) {
+        pipelineVideoUploadInput.addEventListener('change', handlePipelineVideoUploadSelection);
+    }
+    if (browseVideosBtn && isMobileBrowser()) {
+        browseVideosBtn.style.display = 'none';
+    }
+}
+
+async function uploadPipelineVideoFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/upload-video', {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        let detail = `HTTP ${response.status}`;
+        try {
+            const errorData = await response.json();
+            if (errorData && errorData.detail) detail = errorData.detail;
+        } catch (parseError) {
+            // Keep fallback detail from status.
+        }
+        throw new Error(detail);
+    }
+
+    const payload = await response.json();
+    if (!payload || !payload.path) {
+        throw new Error('Upload succeeded but no path was returned');
+    }
+    return payload.path;
+}
+
+async function handlePipelineVideoUploadSelection(evt) {
+    const inputEl = evt && evt.target ? evt.target : pipelineVideoUploadInput;
+    if (!inputEl || !inputEl.files || inputEl.files.length === 0) return;
+    if (pipelineUploadPromise) {
+        setPipelineStatus('A video upload is already in progress. Please wait...');
+        inputEl.value = '';
+        return;
+    }
+
+    const selectedFiles = Array.from(inputEl.files);
+    setPipelineUploadBusy(true);
+
+    const uploadTask = (async () => {
+        setPipelineStatus(`Uploading ${selectedFiles.length} video file${selectedFiles.length === 1 ? '' : 's'}...`);
+        const uploadedPaths = [];
+        for (const file of selectedFiles) {
+            const uploadedPath = await uploadPipelineVideoFile(file);
+            uploadedPaths.push(uploadedPath);
+        }
+        appendPipelineVideoPaths(uploadedPaths);
+        setPipelineStatus(`Uploaded ${uploadedPaths.length} video file${uploadedPaths.length === 1 ? '' : 's'}.`);
+    })();
+    pipelineUploadPromise = uploadTask;
+
+    try {
+        await uploadTask;
+    } catch (error) {
+        console.error('Error uploading videos:', error);
+        setPipelineStatus(`Failed to upload video: ${error.message}`, true);
+    } finally {
+        inputEl.value = '';
+        if (pipelineUploadPromise === uploadTask) {
+            pipelineUploadPromise = null;
+        }
+        setPipelineUploadBusy(false);
+    }
 }
 
 function pipelineConfigValue() {
@@ -1095,18 +1209,18 @@ async function deletePipelineJob(jobId) {
 }
 
 async function browseVideos() {
-    const btn = document.getElementById('browseVideosBtn');
+    if (isMobileBrowser()) {
+        triggerVideoUploadPicker();
+        return;
+    }
+    const btn = browseVideosBtn;
     if (btn) btn.disabled = true;
     try {
         const response = await fetch('/api/browse-videos', { method: 'POST' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         const paths = data.paths || [];
-        if (paths.length > 0 && pipelineVideoPaths) {
-            const existing = pipelineVideoPaths.value.trim();
-            const newText = paths.join('\n');
-            pipelineVideoPaths.value = existing ? existing + '\n' + newText : newText;
-        }
+        appendPipelineVideoPaths(paths);
     } catch (error) {
         console.error('Error browsing videos:', error);
         setPipelineStatus('Failed to open file browser: ' + error.message, true);
@@ -1119,6 +1233,16 @@ async function submitPipelineJobs(formEvent) {
     formEvent.preventDefault();
 
     if (!pipelineVideoPaths) return;
+    if (pipelineUploadPromise) {
+        setPipelineStatus('Waiting for upload to finish...');
+        try {
+            await pipelineUploadPromise;
+        } catch (error) {
+            setPipelineStatus(`Failed to queue jobs: ${error.message}`, true);
+            return;
+        }
+    }
+
     const lines = pipelineVideoPaths.value
         .split('\n')
         .map((line) => line.trim())
@@ -2407,6 +2531,41 @@ function formatSuggestionCandidate(candidate) {
     return escapeHtml(`${name} (${score}) b:${body} p:${profile} g:${bonus}`);
 }
 
+function getTrackThumbnailUrl(trackId) {
+    if (!currentRun) return '';
+    const encodedRun = encodeURIComponent(currentRun);
+    const encodedTrackId = encodeURIComponent(String(trackId));
+    return `/api/runs/${encodedRun}/tracks/${encodedTrackId}/thumbnail`;
+}
+
+function jumpToTrackFrame(frameStart, fps = 25) {
+    const frame = Number(frameStart);
+    const frameRate = Number(fps);
+    if (!Number.isFinite(frame) || !Number.isFinite(frameRate) || frameRate <= 0) {
+        return;
+    }
+
+    const targetSeconds = Math.max(0, frame / frameRate);
+    showView('matchAnalysisView');
+    activeSegmentEndTime = null;
+
+    if (typeof seekVideoTo === 'function') {
+        seekVideoTo(targetSeconds);
+    } else if (typeof _seekAndPlay === 'function') {
+        _seekAndPlay(targetSeconds);
+    } else if (videoPlayer) {
+        videoPlayer.currentTime = targetSeconds;
+        videoPlayer.play().catch(() => {});
+    }
+    updateUrlHash(targetSeconds);
+
+    if (viewer && typeof viewer.scrollIntoView === 'function') {
+        requestAnimationFrame(() => {
+            viewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+}
+
 function renderIdentitySuggestions() {
     if (!identitySuggestionsList) return;
 
@@ -2424,6 +2583,8 @@ function renderIdentitySuggestions() {
     visibleSuggestions.forEach(row => {
         const trackId = Number(row.track_id);
         const isSelected = selectedSuggestionTrackIds.has(trackId);
+        const frameStart = Number(row.frame_start);
+        const hasFrameStart = Number.isFinite(frameStart);
         const recommended = row.recommended || {};
         const playerName = recommended.player_name || (recommended.player_id != null ? `Player ${recommended.player_id}` : 'None');
         const confidence = Number(recommended.confidence ?? 0).toFixed(2);
@@ -2436,6 +2597,8 @@ function renderIdentitySuggestions() {
             : 'No candidates';
         const disabledCheckbox = (!needsReview || status === 'applied') ? 'disabled' : '';
         const checked = (isSelected && !disabledCheckbox) ? 'checked' : '';
+        const thumbUrl = getTrackThumbnailUrl(trackId);
+        const jumpDisabled = hasFrameStart ? '' : 'disabled title="No frame start available"';
 
         html += `
             <div class="identity-suggestion-row">
@@ -2447,12 +2610,18 @@ function renderIdentitySuggestions() {
                         onchange="toggleSuggestionSelection(${trackId}, this.checked)"
                     >
                 </div>
-                <div class="identity-id">Track ${trackId}</div>
-                <div class="identity-suggestion-meta">
-                    ${escapeHtml(playerName)} • conf ${escapeHtml(confidence)} • ${escapeHtml(method)}<br>
-                    status ${escapeHtml(status)} • strategy ${escapeHtml(row.fusion_strategy || 'body_only')}
+                <div class="identity-row-main">
+                    <img class="track-thumb" src="${thumbUrl}" loading="lazy" alt="Track ${trackId}">
+                    <div class="identity-row-text">
+                        <div class="identity-id">Track ${trackId}</div>
+                        <div class="identity-suggestion-meta">
+                            ${escapeHtml(playerName)} • conf ${escapeHtml(confidence)} • ${escapeHtml(method)}<br>
+                            status ${escapeHtml(status)} • strategy ${escapeHtml(row.fusion_strategy || 'body_only')}
+                        </div>
+                        <div class="identity-suggestion-meta">${candidateText}</div>
+                    </div>
                 </div>
-                <div class="identity-suggestion-meta">${candidateText}</div>
+                <button class="identity-btn identity-jump-btn" ${jumpDisabled} onclick="jumpToTrackFrame(${hasFrameStart ? frameStart : 'null'}, 25)">▶</button>
             </div>
         `;
     });
@@ -2610,6 +2779,9 @@ function renderIdentityAssignments() {
             ? Number(row.lock_conflict_with_track_id)
             : null;
         const fusionStrategy = row.fusion_strategy || 'body_only';
+        const frameStartNum = Number(frameStart);
+        const hasFrameStart = Number.isFinite(frameStartNum);
+        const thumbUrl = getTrackThumbnailUrl(trackId);
 
         const faceConf = row.face_confidence != null ? Number(row.face_confidence).toFixed(2) : null;
         const faceSupport = row.face_support_frames != null ? Number(row.face_support_frames) : null;
@@ -2650,6 +2822,7 @@ function renderIdentityAssignments() {
             evidenceParts.push('no extra multimodal evidence');
         }
         const evidenceText = evidenceParts.join(' • ');
+        const jumpDisabled = hasFrameStart ? '' : 'disabled title="No frame start available"';
 
         html += `
             <div class="identity-assignment-row">
@@ -2660,21 +2833,27 @@ function renderIdentityAssignments() {
                         onchange="toggleAssignmentSelection(${trackId}, this.checked)"
                     >
                 </div>
-                <div class="identity-id">Track ${trackId}</div>
-                <div class="identity-assignment-meta">
-                    ${escapeHtml(matchMethod)} • conf ${escapeHtml(matchConfidence)}<br>
-                    frames ${escapeHtml(frameStart)}-${escapeHtml(frameEnd)}<br>
-                    ${escapeHtml(lockText)}
+                <div class="identity-row-main">
+                    <img class="track-thumb" src="${thumbUrl}" loading="lazy" alt="Track ${trackId}">
+                    <div class="identity-row-text">
+                        <div class="identity-id">Track ${trackId}</div>
+                        <div class="identity-assignment-meta">
+                            ${escapeHtml(matchMethod)} • conf ${escapeHtml(matchConfidence)}<br>
+                            frames ${escapeHtml(frameStart)}-${escapeHtml(frameEnd)}<br>
+                            ${escapeHtml(lockText)}
+                        </div>
+                        <div class="identity-assignment-meta">
+                            ${escapeHtml(row.player_name || 'Unassigned')}<br>
+                            strategy ${escapeHtml(fusionStrategy)}<br>
+                            ${escapeHtml(evidenceText)}
+                        </div>
+                    </div>
                 </div>
                 <select id="assignmentPlayer_${trackId}" class="form-input">
                     ${identityPlayerOptions(currentPlayerId)}
                 </select>
-                <div class="identity-assignment-meta">
-                    ${escapeHtml(row.player_name || 'Unassigned')}<br>
-                    strategy ${escapeHtml(fusionStrategy)}<br>
-                    ${escapeHtml(evidenceText)}
-                </div>
                 <button class="identity-btn" onclick="saveTrackAssignment(${trackId})">Assign</button>
+                <button class="identity-btn identity-jump-btn" ${jumpDisabled} onclick="jumpToTrackFrame(${hasFrameStart ? frameStartNum : 'null'}, 25)">▶</button>
             </div>
         `;
     });
@@ -3580,6 +3759,9 @@ function setupVideoPlayer() {
     const scrubber = document.getElementById('timelineScrubber');
     const hoverTooltip = document.getElementById('timelineHoverTooltip');
 
+    videoPlayer.setAttribute('playsinline', '');
+    videoPlayer.setAttribute('webkit-playsinline', '');
+
     // Update progress bar
     videoPlayer.addEventListener('timeupdate', () => {
         if (videoPlayer.duration) {
@@ -3652,6 +3834,18 @@ function setupVideoPlayer() {
         activeSegmentEndTime = null;
         videoPlayer.currentTime = percentage * videoPlayer.duration;
     });
+
+    timelineBar.addEventListener('touchend', (e) => {
+        if (timelineDragging) return;
+        if (e.target && e.target.closest && e.target.closest('.timeline-marker')) return;
+        const rect = timelineBar.getBoundingClientRect();
+        const touch = e.changedTouches && e.changedTouches[0];
+        if (!touch) return;
+        const x = Math.max(0, Math.min(rect.width, touch.clientX - rect.left));
+        const percentage = x / rect.width;
+        activeSegmentEndTime = null;
+        videoPlayer.currentTime = percentage * (videoPlayer.duration || 0);
+    }, { passive: true });
 
     // Drag-to-scrub
     if (scrubber) {

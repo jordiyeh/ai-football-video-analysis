@@ -2,14 +2,17 @@
 
 import asyncio
 import json
+import sys
 import threading
 import time
+import types
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -556,6 +559,92 @@ def test_identity_review_and_create_player_endpoint(tmp_path: Path):
     )
     assert created_payload["success"] is True
     assert created_payload["player"]["name"] == "Alex"
+
+
+def test_track_thumbnail_endpoint_returns_jpeg_and_uses_cache(tmp_path: Path):
+    """Track thumbnail endpoint should crop the configured frame bbox and cache bytes."""
+    runs_dir = tmp_path / "runs"
+    run_path = runs_dir / "match_run"
+    run_path.mkdir(parents=True)
+
+    video_path = tmp_path / "match.mp4"
+    video_path.write_bytes(b"not-a-real-video")
+
+    _write_json(
+        run_path / "run_manifest.json",
+        {
+            "original_video_path": str(video_path),
+        },
+    )
+    _write_json(
+        run_path / "player_assignments.json",
+        {
+            "schema_version": "1.2",
+            "video_id": "match",
+            "assignments": [
+                {
+                    "track_id": 7,
+                    "frame_start": 12,
+                    "bbox": [10, 20, 70, 110],
+                }
+            ],
+        },
+    )
+
+    class _FakeCapture:
+        def __init__(self, path: str):
+            fake_cv2.capture_open_count += 1
+            self.path = path
+            self.opened = True
+
+        def isOpened(self):
+            return self.opened
+
+        def set(self, prop, value):
+            fake_cv2.last_seek = (prop, value)
+            return True
+
+        def read(self):
+            frame = np.zeros((140, 120, 3), dtype=np.uint8)
+            frame[:, :, 1] = 200
+            return True, frame
+
+        def release(self):
+            self.opened = False
+
+    def _fake_resize(image, dsize):
+        width, height = dsize
+        return np.zeros((height, width, 3), dtype=image.dtype)
+
+    def _fake_imencode(ext, image, params):
+        fake_cv2.last_encoded_shape = image.shape
+        return True, np.frombuffer(b"fake-jpeg-bytes", dtype=np.uint8)
+
+    fake_cv2 = types.SimpleNamespace(
+        CAP_PROP_POS_FRAMES=1,
+        IMWRITE_JPEG_QUALITY=95,
+        capture_open_count=0,
+        last_seek=None,
+        last_encoded_shape=None,
+        VideoCapture=_FakeCapture,
+        resize=_fake_resize,
+        imencode=_fake_imencode,
+    )
+
+    app = create_app(runs_dir)
+    get_thumbnail = _get_route_endpoint(
+        app,
+        "/api/runs/{run_name}/tracks/{track_id}/thumbnail",
+    )
+
+    with patch.dict(sys.modules, {"cv2": fake_cv2}):
+        first = asyncio.run(get_thumbnail(run_name="match_run", track_id=7))
+        second = asyncio.run(get_thumbnail(run_name="match_run", track_id=7))
+
+    assert first.media_type == "image/jpeg"
+    assert first.body == b"fake-jpeg-bytes"
+    assert second.body == b"fake-jpeg-bytes"
+    assert fake_cv2.capture_open_count == 1
 
 
 def test_recompute_player_reels_endpoint(tmp_path: Path):
@@ -2525,6 +2614,44 @@ def test_upload_team_logo(tmp_path: Path):
     result = asyncio.run(endpoint(t.team_id, fake_file))
     assert result["success"] is True
     assert "team_logos" in result["logo_path"]
+
+
+def test_upload_video_endpoint_saves_file_in_uploads(tmp_path: Path):
+    """POST /api/upload-video should save file to project uploads/ and return relative path."""
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+
+    app = create_app(runs_dir)
+    endpoint = _get_route_endpoint(app, "/api/upload-video", "POST")
+    fake_file = _FakeUploadFile(b"\x00\x00\x00\x20ftypisom....", "match_clip.mp4")
+    result = asyncio.run(endpoint(fake_file))
+
+    assert result["success"] is True
+    assert result["path"].startswith("uploads/")
+    assert result["filename"].endswith(".mp4")
+    from src.ui import server as _server_module
+    project_root = Path(_server_module.__file__).resolve().parents[2]
+    uploaded_path = project_root / result["path"]
+    assert uploaded_path.exists()
+    assert uploaded_path.is_file()
+
+    # Cleanup test artifact from project-local uploads folder.
+    if uploaded_path.exists():
+        uploaded_path.unlink()
+
+
+def test_upload_video_endpoint_rejects_unsupported_extension(tmp_path: Path):
+    """POST /api/upload-video should reject non-video file extensions."""
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+
+    app = create_app(runs_dir)
+    endpoint = _get_route_endpoint(app, "/api/upload-video", "POST")
+    fake_file = _FakeUploadFile(b"not-a-video", "notes.txt")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(endpoint(fake_file))
+    assert exc_info.value.status_code == 400
 
 
 def test_serve_team_logo(tmp_path: Path):
