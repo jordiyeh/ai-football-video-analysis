@@ -5,7 +5,7 @@ description = "Local-first soccer match video analysis for Apple Silicon"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.24.0",
-    "pandas>=2.0.0",
+    "pandas>=3.0.2",
     "pydantic>=2.5.0",
     "pyyaml>=6.0",
     "opencv-python>=4.8.0",
