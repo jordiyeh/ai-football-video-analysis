@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Local-first soccer match video analysis for Apple Silicon"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=1.24.0",
+    "numpy>=2.4.4",
     "pandas>=2.0.0",
     "pydantic>=2.5.0",
     "pyyaml>=6.0",
